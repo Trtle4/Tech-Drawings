@@ -22,10 +22,11 @@ const CASES: Record<string, Record<string, number>[]> = {
     { L: 90, W: 45, H: 160, caliper: 0.45 },
     { L: 200, W: 60, H: 90, caliper: 0.6 },
   ],
-  'fefco.0300': [
+  'tray.slit_corner': [
     { L: 300, W: 220, wallH: 75, caliper: 3 },
     { L: 300, W: 220, wallH: 75, caliper: 3, wallAngle: 70 },
   ],
+  'fefco.0200': [{ L: 200, W: 150, H: 250, caliper: 3 }],
   'fefco.0201': [
     { L: 200, W: 150, H: 250, caliper: 3 },
     { L: 400, W: 300, H: 120, caliper: 5 },

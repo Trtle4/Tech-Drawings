@@ -4,7 +4,8 @@ export * from './compile.js';
 
 import type { StyleDefinition } from './schema.js';
 import { fefco0201 } from './catalog/fefco0201.js';
-import { fefco0300 } from './catalog/fefco0300.js';
+import { fefco0200 } from './catalog/fefco0200.js';
+import { slitCornerTray } from './catalog/slit-corner-tray.js';
 import { sealEndCarton } from './catalog/seal-end-carton.js';
 import { proofTaperedTray } from './catalog/proof-tapered-tray.js';
 
@@ -16,13 +17,18 @@ import { proofTaperedTray } from './catalog/proof-tapered-tray.js';
  *
  * Still to come in v1: the three bags (pillow, SUP, gusseted).
  */
-export const STYLES: readonly StyleDefinition[] = [fefco0201, fefco0300, sealEndCarton];
+export const STYLES: readonly StyleDefinition[] = [
+  fefco0201,
+  fefco0200,
+  slitCornerTray,
+  sealEndCarton,
+];
 
 export const STYLE_BY_ID: ReadonlyMap<string, StyleDefinition> = new Map(
   STYLES.map((s) => [s.id, s]),
 );
 
-export { fefco0201, fefco0300, sealEndCarton };
+export { fefco0201, fefco0200, slitCornerTray, sealEndCarton };
 
 /**
  * Not part of the catalogue. A throwaway style defined without the grid, kept

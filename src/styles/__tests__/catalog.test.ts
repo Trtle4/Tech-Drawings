@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { STYLES, compileStyle } from '../index.js';
 import { sealEndCarton } from '../catalog/seal-end-carton.js';
-import { fefco0300 } from '../catalog/fefco0300.js';
+import { slitCornerTray } from '../catalog/slit-corner-tray.js';
+import { fefco0200 } from '../catalog/fefco0200.js';
+import { fefco0201 } from '../catalog/fefco0201.js';
 import { blankSize, materialArea, resolveGeometry } from '../../geometry/resolve.js';
 import { foldedFacePoints } from '../../geometry/fold.js';
 import type { GeometryGraph } from '../../geometry/types.js';
@@ -155,8 +157,8 @@ describe('seal end carton', () => {
   });
 });
 
-describe('slotted tray, FEFCO 0300', () => {
-  const compiled = compileStyle(fefco0300);
+describe('slit corner tray', () => {
+  const compiled = compileStyle(slitCornerTray);
   const resolved = resolveGeometry(compiled.graph);
 
   it('resolves a base, four walls and four corner tabs', () => {
@@ -194,7 +196,7 @@ describe('slotted tray, FEFCO 0300', () => {
   });
 
   it('splays the walls when told to', () => {
-    const splayed = compileStyle(fefco0300, { params: { wallAngle: 70 } });
+    const splayed = compileStyle(slitCornerTray, { params: { wallAngle: 70 } });
     const r = resolveGeometry(splayed.graph);
     for (const h of r.hinges) {
       const isWallFold = h.lineIds.some((id) =>
@@ -205,5 +207,94 @@ describe('slotted tray, FEFCO 0300', () => {
     // The footprint grows by the walls' horizontal reach on each side.
     const e = extents(splayed.graph);
     expect(e[2]).toBeCloseTo(300 + 2 * 75 * Math.cos(70 * DEG), 3);
+  });
+});
+
+describe('FEFCO 0200 half slotted container', () => {
+  const hsc = compileStyle(fefco0200);
+  const rsc = compileStyle(fefco0201);
+  const resolved = resolveGeometry(hsc.graph);
+
+  it('is derived from 0201 by one change and nothing else', () => {
+    // The claim the grid model makes. If this test needs loosening, the grid
+    // has stopped earning its place.
+    expect(fefco0200.params).toBe(fefco0201.params);
+    expect(fefco0200.grid!.columns).toBe(fefco0201.grid!.columns);
+    expect(fefco0200.grid!.cells).toBe(fefco0201.grid!.cells);
+    expect(fefco0200.grid!.boundaries).toBe(fefco0201.grid!.boundaries);
+
+    // Only the flap_top row differs, and only by being marked absent.
+    const changed = fefco0200.grid!.rows.filter(
+      (r, i) => JSON.stringify(r) !== JSON.stringify(fefco0201.grid!.rows[i]),
+    );
+    expect(changed).toHaveLength(1);
+    expect(changed[0]!.id).toBe('flap_top');
+    expect(changed[0]!.presentIf).toBe('0');
+  });
+
+  it('drops the four top flaps and keeps everything else', () => {
+    const roles = resolved.faces.map((f) => f.role).sort();
+    expect(roles).toEqual([
+      'back_flap_bottom', 'back_panel',
+      'front_flap_bottom', 'front_panel',
+      'glue_flap',
+      'left_flap_bottom', 'left_panel',
+      'right_flap_bottom', 'right_panel',
+    ]);
+    expect(resolved.faces).toHaveLength(9);
+    expect(resolved.hinges).toHaveLength(8);
+    expect(resolved.unresolved).toEqual([]);
+  });
+
+  it('shortens the blank by exactly one flap row', () => {
+    expect(hsc.blank.width).toBe(rsc.blank.width);
+    expect(hsc.blank.height).toBe(rsc.blank.height - hsc.params.flap!);
+  });
+
+  it('loses exactly the top flaps worth of board', () => {
+    const rscArea = materialArea(resolveGeometry(rsc.graph));
+    const topFlaps = resolveGeometry(rsc.graph)
+      .faces.filter((f) => f.role.endsWith('_flap_top'))
+      .reduce((s, f) => s + f.area, 0);
+    expect(materialArea(resolved)).toBeCloseTo(rscArea - topFlaps, 6);
+  });
+
+  it('folds to the same box as the RSC, open at the top', () => {
+    const e = extents(hsc.graph);
+    expect(e[0]).toBeCloseTo(150, 6);
+    expect(e[1]).toBeCloseTo(200, 6);
+    expect(e[2]).toBeCloseTo(250, 6);
+  });
+
+  it('tracks 0201 when the shared parameters change', () => {
+    for (const [L, W, H] of [[300, 200, 150], [80, 80, 400]] as const) {
+      const a = compileStyle(fefco0200, { params: { L, W, H } });
+      const b = compileStyle(fefco0201, { params: { L, W, H } });
+      expect(a.blank.width).toBe(b.blank.width);
+      expect(a.blank.height).toBe(b.blank.height - a.params.flap!);
+      const r = resolveGeometry(a.graph);
+      expect(r.faces).toHaveLength(9);
+      expect(r.unresolved).toEqual([]);
+    }
+  });
+});
+
+describe('the tray carries no unverified catalogue code', () => {
+  it('claims no standard or code', () => {
+    // It was wrongly published as FEFCO 0300. 03xx is the telescope group and
+    // multi-piece; this is one piece. Left unassigned rather than guessed again.
+    expect(slitCornerTray.id).toBe('tray.slit_corner');
+    expect(slitCornerTray.standard).toBeUndefined();
+    expect(slitCornerTray.code).toBeUndefined();
+  });
+
+  it('is not the half slotted container, and does not share its numbers', () => {
+    const tray = resolveGeometry(compileStyle(slitCornerTray).graph);
+    const hsc = resolveGeometry(compileStyle(fefco0200).graph);
+    expect(tray.faces).toHaveLength(9);
+    expect(hsc.faces).toHaveLength(9);
+    // Same face count, entirely different structure.
+    expect(tray.faces.map((f) => f.role).sort()).not.toEqual(hsc.faces.map((f) => f.role).sort());
+    expect(materialArea(tray)).not.toBeCloseTo(materialArea(hsc), 0);
   });
 });

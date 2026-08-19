@@ -1007,7 +1007,7 @@ main {
   <header id="topbar">
     <div class="brand"><h1>Dieline Studio</h1><span class="part">GEOMETRY PREVIEW</span></div>
     <div class="spacer"></div>
-    <div id="style-tabs"><button class="tbtn on" data-view="view-fefco_0201">Regular Slotted Case</button><button class="tbtn" data-view="view-fefco_0300">Slotted Tray</button><button class="tbtn" data-view="view-carton_seal_end">Seal End Carton</button><button class="tbtn" data-view="view-proof_tapered_tray">Tapered tray (proof)</button></div>
+    <div id="style-tabs"><button class="tbtn on" data-view="view-fefco_0201">Regular Slotted Case</button><button class="tbtn" data-view="view-fefco_0200">Half Slotted Container</button><button class="tbtn" data-view="view-tray_slit_corner">Slit Corner Tray</button><button class="tbtn" data-view="view-carton_seal_end">Seal End Carton</button><button class="tbtn" data-view="view-proof_tapered_tray">Tapered tray (proof)</button></div>
   </header>
   <div class="banner">! Static preview — pre-rendered from the style catalogue at default parameters. The editor, live 3D and exports are not built yet.</div>
   <main>
@@ -1156,12 +1156,130 @@ main {
     </div>
   </div>
 </section>
-<section class="view" id="view-fefco_0300">
+<section class="view" id="view-fefco_0200">
   <aside id="panel">
     <div class="group">
       <div class="eyebrow"><span class="n">01</span> Style</div>
       <div class="field"><span class="label">Structure</span>
-        <select><option>Slotted Tray — FEFCO 0300</option></select>
+        <select><option>Half Slotted Container — FEFCO 0200</option></select>
+        <div class="hint">An RSC without the top flaps. Open-top shipping case, often used with a separate lid.</div>
+      </div>
+    </div>
+    <div class="group"><div class="eyebrow"><span class="n">02</span> Internal dimensions</div><div class="field"><span class="label">Length</span><div class="in"><input value="200" readonly><span class="unit">mm</span></div><div class="hint">Internal, along the front panel.</div></div><div class="field"><span class="label">Width</span><div class="in"><input value="150" readonly><span class="unit">mm</span></div></div><div class="field"><span class="label">Height</span><div class="in"><input value="250" readonly><span class="unit">mm</span></div></div></div><div class="group"><div class="eyebrow"><span class="n">03</span> Material</div><div class="field"><span class="label">Board caliper</span><div class="in"><input value="3" readonly><span class="unit">mm</span></div><div class="hint">Also the slot width.</div></div></div><div class="group"><div class="eyebrow"><span class="n">04</span> Allowances</div><div class="field"><span class="label">Glue flap</span><div class="in"><input value="35" readonly><span class="unit">mm</span></div><div class="hint">Manufacturer’s joint, lapped inside the back panel.</div></div><div class="field"><span class="label">Flap depth</span><div class="in"><input value="75" readonly><span class="unit">mm</span></div><div class="hint">W/2 makes the outer flaps meet. Reduce for a gap.</div></div><div class="field"><span class="label">Slot width</span><div class="in"><input value="3" readonly><span class="unit">mm</span></div></div></div>
+    <div class="group">
+      <div class="eyebrow"><span class="n">99</span> Unfolded geometry</div>
+      <div class="hint">Nothing — every line resolved into the fold graph.</div>
+    </div>
+    <div id="messages"></div>
+  </aside>
+
+  <div id="viewport">
+    <div id="pane-2d">
+      <div class="pane-grid"></div>
+      <span class="pane-label">Flat blank · mm</span>
+      <svg class="pane-canvas" viewBox="0 0 882 472" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10" fill="none" stroke="var(--l-dimension)" stroke-width="1.6"/>
+    </marker>
+  </defs>
+  <g transform="translate(73.5 398.5)">
+    <g transform="scale(1 -1)"><path d="M 0.00 325.00 L 0.00 75.00 L 35.00 75.00 L 35.00 325.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 236.50 75.00 L 236.50 0.00 L 383.50 0.00 L 383.50 75.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 586.50 75.00 L 586.50 0.00 L 735.00 0.00 L 735.00 75.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 386.50 75.00 L 386.50 0.00 L 583.50 0.00 L 583.50 75.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 35.00 75.00 L 35.00 0.00 L 233.50 0.00 L 233.50 75.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 235.00 75.00 L 236.50 75.00 L 383.50 75.00 L 385.00 75.00 L 385.00 325.00 L 235.00 325.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 585.00 75.00 L 586.50 75.00 L 735.00 75.00 L 735.00 325.00 L 585.00 325.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 233.50 75.00 L 235.00 75.00 L 235.00 325.00 L 35.00 325.00 L 35.00 75.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 385.00 75.00 L 386.50 75.00 L 583.50 75.00 L 585.00 75.00 L 585.00 325.00 L 385.00 325.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 35.00 0.00 L 35.00 75.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 233.50 0.00 L 233.50 75.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 236.50 0.00 L 236.50 75.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 233.50 75.00 L 236.50 75.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 383.50 0.00 L 383.50 75.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 386.50 0.00 L 386.50 75.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 383.50 75.00 L 386.50 75.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 583.50 0.00 L 583.50 75.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 586.50 0.00 L 586.50 75.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 583.50 75.00 L 586.50 75.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 735.00 0.00 L 735.00 75.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 0.00 75.00 L 0.00 325.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 35.00 75.00 L 35.00 325.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 235.00 75.00 L 235.00 325.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 385.00 75.00 L 385.00 325.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 585.00 75.00 L 585.00 325.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 735.00 75.00 L 735.00 325.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 0.00 75.00 L 35.00 75.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 0.00 325.00 L 35.00 325.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 35.00 0.00 L 233.50 0.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 35.00 75.00 L 235.00 75.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 35.00 325.00 L 235.00 325.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 236.50 0.00 L 383.50 0.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 235.00 75.00 L 385.00 75.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 235.00 325.00 L 385.00 325.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 386.50 0.00 L 583.50 0.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 385.00 75.00 L 585.00 75.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 385.00 325.00 L 585.00 325.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 586.50 0.00 L 735.00 0.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 585.00 75.00 L 735.00 75.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 585.00 325.00 L 735.00 325.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+    <g>
+      <line class="dim-ext" x1="0" y1="-3.85875" x2="0" y2="-32.15625"/>
+      <line class="dim-ext" x1="735" y1="-3.85875" x2="735" y2="-32.15625"/>
+      <line class="dimline" x1="0" y1="-25.725" x2="735" y2="-25.725" marker-start="url(#a)" marker-end="url(#a)"/>
+      <line class="dim-ext" x1="738.85875" y1="0" x2="767.15625" y2="0"/>
+      <line class="dim-ext" x1="738.85875" y1="325" x2="767.15625" y2="325"/>
+      <line class="dimline" x1="760.725" y1="0" x2="760.725" y2="325" marker-start="url(#a)" marker-end="url(#a)"/>
+    </g></g>
+    <text class="lbl" style="font-size:11.76px" x="17.5" y="-200.0" transform="rotate(-90 17.5 -200.0)">GLUE FLAP</text>
+<text class="lbl" style="font-size:11.76px" x="310.0" y="-37.5">LEFT FLAP BOTTOM</text>
+<text class="lbl" style="font-size:11.76px" x="660.8" y="-37.5">RIGHT FLAP BOTTOM</text>
+<text class="lbl" style="font-size:11.76px" x="485.0" y="-37.5">FRONT FLAP BOTTOM</text>
+<text class="lbl" style="font-size:11.76px" x="134.3" y="-37.5">BACK FLAP BOTTOM</text>
+<text class="lbl" style="font-size:11.76px" x="310.0" y="-200.0">LEFT PANEL</text>
+<text class="lbl" style="font-size:11.76px" x="660.0" y="-200.0">RIGHT PANEL</text>
+<text class="lbl" style="font-size:11.76px" x="135.0" y="-200.0">BACK PANEL</text>
+<text class="lbl" style="font-size:11.76px" x="485.0" y="-200.0">FRONT PANEL</text>
+    <text class="dimtext" style="font-size:13.52px" x="367.5" y="42.0">735</text>
+    <text class="dimtext" style="font-size:13.52px" x="777.0" y="-162.5" transform="rotate(-90 777.0 -162.5)">325</text>
+  </g>
+</svg>
+      <span class="scalechip">Blank 735 × 325 mm</span>
+      <div class="titleblock">
+        <div class="tbhead"><span>Dieline Studio</span><span>FEFCO 0200</span></div>
+        <div class="tbrow"><div class="k">Style</div><div class="v">Half Slotted Container</div></div>
+        <div class="tbrow"><div class="k">Faces</div><div class="v"><b>9</b> · 8 hinges</div></div>
+        <div class="tbrow"><div class="k">Caliper</div><div class="v">3 mm</div></div>
+        <div class="tbrow"><div class="k">Blank</div><div class="v">735 × 325</div></div>
+        <div class="tbrow"><div class="k">Board</div><div class="v">235,575 mm²</div></div>
+        <div class="tbrow"><div class="k">Seals</div><div class="v">1</div></div>
+        <div class="tbrow"><div class="k">Scale</div><div class="v">1:1</div></div>
+      </div>
+    </div>
+    <div id="pane-3d">
+      <div class="pane-grid"></div>
+      <span class="pane-label">Folded · 100% · iso</span>
+      <svg class="pane-canvas" viewBox="-422.4643214295845 -35.36440000841792 391.73040468963984 350.7467175452857" preserveAspectRatio="xMidYMid meet">
+<path d="M -235.93 3.89 L -291.66 25.89 L -291.66 158.02 L -235.93 136.02 Z" fill="var(--board)" fill-opacity="0.851" stroke="var(--board-edge)" stroke-width="1.264" stroke-linejoin="round"/>
+<path d="M -237.04 137.80 L -237.04 70.39 L -383.44 128.18 L -383.44 195.59 Z" fill="var(--board)" fill-opacity="0.851" stroke="var(--board-edge)" stroke-width="1.264" stroke-linejoin="round"/>
+<path d="M -235.93 2.54 L -235.93 3.89 L -235.93 136.02 L -235.93 137.36 L -68.64 218.81 L -68.64 83.99 Z" fill="var(--board)" fill-opacity="0.821" stroke="var(--board-edge)" stroke-width="1.264" stroke-linejoin="round"/>
+<path d="M -384.55 61.21 L -384.55 128.62 L -237.04 70.39 L -237.04 2.98 Z" fill="var(--board)" fill-opacity="0.851" stroke="var(--board-edge)" stroke-width="1.264" stroke-linejoin="round"/>
+<path d="M -235.93 137.36 L -237.04 137.80 L -383.44 195.59 L -384.55 196.03 L -217.27 277.47 L -68.64 218.81 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.264" stroke-linejoin="round"/>
+<path d="M -384.55 194.68 L -328.82 172.68 L -328.82 39.21 L -384.55 61.21 Z" fill="var(--board)" fill-opacity="0.851" stroke="var(--board-edge)" stroke-width="1.264" stroke-linejoin="round"/>
+<path d="M -237.04 2.98 L -235.93 2.54 L -68.64 83.99 L -217.27 142.65 L -384.55 61.21 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.264" stroke-linejoin="round"/>
+<path d="M -384.55 196.03 L -384.55 194.68 L -384.55 61.21 L -217.27 142.65 L -217.27 277.47 Z" fill="var(--board)" fill-opacity="0.821" stroke="var(--board-edge)" stroke-width="1.264" stroke-linejoin="round"/>
+<path d="M -217.27 174.11 L -384.55 92.67 L -384.55 61.21 L -217.27 142.65 Z" fill="var(--board)" fill-opacity="0.821" stroke="var(--board-edge)" stroke-width="1.264" stroke-linejoin="round"/>
+</svg>
+    </div>
+  </div>
+</section>
+<section class="view" id="view-tray_slit_corner">
+  <aside id="panel">
+    <div class="group">
+      <div class="eyebrow"><span class="n">01</span> Style</div>
+      <div class="field"><span class="label">Structure</span>
+        <select><option>Slit Corner Tray</option></select>
         <div class="hint">One-piece tray with slit corners; each corner tab folds in behind the adjacent wall.</div>
       </div>
     </div>
@@ -1236,8 +1354,8 @@ main {
 </svg>
       <span class="scalechip">Blank 450 × 370 mm</span>
       <div class="titleblock">
-        <div class="tbhead"><span>Dieline Studio</span><span>FEFCO 0300</span></div>
-        <div class="tbrow"><div class="k">Style</div><div class="v">Slotted Tray</div></div>
+        <div class="tbhead"><span>Dieline Studio</span><span>TRAY</span></div>
+        <div class="tbrow"><div class="k">Style</div><div class="v">Slit Corner Tray</div></div>
         <div class="tbrow"><div class="k">Faces</div><div class="v"><b>9</b> · 8 hinges</div></div>
         <div class="tbrow"><div class="k">Caliper</div><div class="v">3 mm</div></div>
         <div class="tbrow"><div class="k">Blank</div><div class="v">450 × 370</div></div>

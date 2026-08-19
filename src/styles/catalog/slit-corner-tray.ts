@@ -1,12 +1,12 @@
 import type { StyleDefinition } from '../schema.js';
 
 /**
- * Slotted tray, FEFCO 03xx family.
+ * Slit corner tray — a one-piece tray.
  *
- * A one-piece tray: rectangular base, four walls folded up, and a corner tab at
- * each corner that stays attached to the end wall and folds in behind the side
- * wall. The corners are slit, not slotted — a knife cut with board on both
- * sides, removing nothing.
+ * Rectangular base, four walls folded up, and a corner tab at each corner that
+ * stays attached to the end wall and folds in behind the side wall. The corners
+ * are slit, not slotted: a knife cut with board on both sides, removing
+ * nothing.
  *
  *   columns   wall_left(wallH) | base(L) | wall_right(wallH)
  *   rows      wall_back  (wallH)
@@ -21,10 +21,15 @@ import type { StyleDefinition } from '../schema.js';
  * terminates on a crease. They classify correctly only because material is
  * decided by whether cuts close, not by whether a chain is open.
  *
- * NOTE ON THE CODE: FEFCO 0300 is the heading for the telescope/tray group
- * rather than an individual style. The specific one-piece slotted tray is
- * likely 0301 or 0306 depending on the corner detail. Named as briefed; worth
- * confirming against the FEFCO catalogue before this ships.
+ * CATALOGUE CODE: deliberately unassigned.
+ *
+ * This was briefly and wrongly published as FEFCO 0300. It is not: FEFCO 03xx
+ * is the telescope group — two or more pieces, a lid and a bottom telescoping
+ * over a body — and 0301 and 0306 are two-piece as well. This is one piece.
+ * A one-piece tray most likely belongs in the 04xx folder/tray family, but
+ * rather than guess a second time the code is left off until someone confirms
+ * it against the catalogue. `standard` and `code` are omitted so nothing
+ * downstream can print an unverified number on a drawing.
  *
  * KNOWN GAP: the corner tabs are creased at a fixed 90° to their side wall,
  * which is right only while `wallAngle` is 90°. Splay the walls and the tabs
@@ -35,12 +40,10 @@ import type { StyleDefinition } from '../schema.js';
  * dimension depending on another fold, which is constraint territory and out
  * of scope for v1. Until then, treat non-90° wall angles here as a preview.
  */
-export const fefco0300: StyleDefinition = {
-  id: 'fefco.0300',
-  name: 'Slotted Tray',
+export const slitCornerTray: StyleDefinition = {
+  id: 'tray.slit_corner',
+  name: 'Slit Corner Tray',
   family: 'tray',
-  standard: 'FEFCO',
-  code: '0300',
   description:
     'One-piece tray with slit corners; each corner tab folds in behind the adjacent wall.',
 
