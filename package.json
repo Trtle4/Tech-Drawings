@@ -12,7 +12,8 @@
     "demo:styles": "tsx scripts/demo-styles.ts",
     "diagnose:chains": "tsx scripts/diagnose-open-chains.ts",
     "demo:theme": "tsx scripts/build-theme-preview.ts",
-    "build:preview": "tsx scripts/build-preview.ts"
+    "build:preview": "tsx scripts/build-preview.ts",
+    "export:dxf": "tsx scripts/export-dxf.ts"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",

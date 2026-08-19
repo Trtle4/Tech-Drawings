@@ -163,6 +163,13 @@ export interface GeometryGraph {
   /** Panel names, as points inside the panels they name. */
   faceSeeds?: FaceSeed[];
   /**
+   * Formed-shape approximation for the 3D view, copied from the style.
+   * Declared and carried; nothing consumes it in v1. A formed mesh must reuse
+   * this blank's UV parameterization so artwork lands identically flat, folded
+   * or formed — see FormedShapeSpec.
+   */
+  formedShape?: unknown;
+  /**
    * Default fold angles in radians, keyed by the role of the crease line. A
    * style states its angles here rather than on the hinge, because hinges are
    * discovered by face detection and do not exist yet when a style is

@@ -186,6 +186,59 @@ export interface ExtraSeedSpec {
   presentIf?: Expr;
 }
 
+/**
+ * How a style's FORMED shape is approximated in 3D. Declared now, consumed by
+ * nothing — the same footing SealZone and FeatureInstance were given.
+ *
+ * WHY IT EXISTS. The fold traversal produces a rigid folded state, which is
+ * right for board and wrong for film. A pillow bag folds to lay-flat and a
+ * stand-up pouch folds flat too, because neither has a rigid folded form; the
+ * filled shape is a tube with crimped ends, or a pouch with an opened base and
+ * billowed walls. Those are parametric approximations, NOT simulation: a tube
+ * of known girth with sealed ends, a filled profile swept along the gusset.
+ *
+ * THE REQUIREMENT THAT MATTERS. A formed mesh must carry the SAME UV
+ * parameterization as the flat blank. Artwork is placed once, on the flat, and
+ * must land in the identical place whether the viewer is looking at the flat
+ * drawing, the lay-flat fold, or the formed shape. So a formed shape is defined
+ * as a DEFORMATION OF THE BLANK'S OWN SURFACE — every vertex keeps the (u, v)
+ * it had in the flat, and only its position in space changes. It is never a
+ * separately modelled mesh with its own unwrap, because two unwraps cannot be
+ * kept in agreement.
+ *
+ * WHAT STAYS TRUE. The fold graph remains the single source of truth for the
+ * dieline. A formed shape may only reinterpret faces the graph already
+ * resolved; it cannot introduce panels, move creases, or change the blank. A
+ * style with no `formedShape` has the folded state AS its formed state, which
+ * is the right answer for every carton and case.
+ */
+export interface FormedShapeSpec {
+  /**
+   * Which approximation to apply. `tube` suits a pillow or gusseted bag: a
+   * girth-preserving section with flattened, crimped ends. `gusseted_pouch`
+   * suits a SUP: an opened base swept from the gusset fold with the walls
+   * bowed out. `none` keeps the rigid fold.
+   */
+  kind: 'none' | 'tube' | 'gusseted_pouch';
+  /**
+   * Roles of the faces the approximation deforms. Everything else keeps its
+   * folded transform, so seals and flaps stay rigid while panels billow.
+   */
+  faceRoles?: string[];
+  /**
+   * Roles of the faces held flat — the crimped end seals on a pillow bag, the
+   * side seals on a pouch.
+   */
+  flatFaceRoles?: string[];
+  /**
+   * How full the pack is, 0 to 1. Drives how far the section rounds out.
+   * Presentation only; it never affects the dieline.
+   */
+  fill?: Expr;
+  /** Free parameters for the chosen approximation, all expressions. */
+  params?: Record<string, Expr>;
+}
+
 // ---------------------------------------------------------------------------
 // The definition
 // ---------------------------------------------------------------------------
@@ -211,6 +264,11 @@ export interface StyleDefinition {
   features?: FeatureSpec[];
   extraLines?: ExtraLineSpec[];
   extraSeeds?: ExtraSeedSpec[];
+  /**
+   * Formed-shape approximation for the 3D view. Carried, never read in v1.
+   * Absent means the rigid folded state is the formed state.
+   */
+  formedShape?: FormedShapeSpec;
   /** Falls back to the grid cell marked `base`, then to the largest face. */
   baseFaceRole?: string;
 }

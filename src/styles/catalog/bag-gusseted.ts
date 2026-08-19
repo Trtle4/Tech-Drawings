@@ -137,6 +137,19 @@ export const bagGusseted: StyleDefinition = {
     ],
   },
 
+  // Declared, not consumed. Same tube, but the gussets set the depth directly
+  // rather than the section having to find it.
+  formedShape: {
+    kind: 'tube',
+    faceRoles: [
+      'front_panel', 'back_panel_left', 'back_panel_right',
+      'gusset_left_front', 'gusset_left_back', 'gusset_right_front', 'gusset_right_back',
+    ],
+    flatFaceRoles: ['fin_left', 'fin_right'],
+    fill: '0.8',
+    params: { depth: 'bagD' },
+  },
+
   seals: [
     {
       id: 'bag.gusseted:fin',

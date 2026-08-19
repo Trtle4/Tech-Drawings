@@ -207,6 +207,16 @@ export const bagSup: StyleDefinition = {
 
   baseFaceRole: 'front_panel',
 
+  // Declared, not consumed. The base opens from the gusset fold and the walls
+  // bow out; the side seals stay flat and the panels keep their flat UVs.
+  formedShape: {
+    kind: 'gusseted_pouch',
+    faceRoles: ['front_panel', 'back_panel', 'gusset_front', 'gusset_back'],
+    flatFaceRoles: ['front_seal_left', 'front_seal_right', 'back_seal_left', 'back_seal_right'],
+    fill: '0.75',
+    params: { baseDepth: 'G' },
+  },
+
   seals: [
     {
       id: 'bag.sup:side_left',

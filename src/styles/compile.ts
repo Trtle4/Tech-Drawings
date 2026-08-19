@@ -163,6 +163,7 @@ export function compileStyle(def: StyleDefinition, opts: CompileOptions = {}): C
     features,
     faceSeeds: seeds,
     hingeAngles,
+    ...(def.formedShape ? { formedShape: def.formedShape } : {}),
     ...(baseRole ? { baseFaceRole: baseRole } : {}),
     meta: { styleId: def.id, styleName: def.name, standard: def.standard, code: def.code, params },
   };
