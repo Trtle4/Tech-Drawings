@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "demo:faces": "tsx scripts/demo-faces.ts",
     "demo:styles": "tsx scripts/demo-styles.ts",
-    "diagnose:chains": "tsx scripts/diagnose-open-chains.ts"
+    "diagnose:chains": "tsx scripts/diagnose-open-chains.ts",
+    "demo:theme": "tsx scripts/build-theme-preview.ts"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",
