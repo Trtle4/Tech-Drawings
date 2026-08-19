@@ -63,6 +63,10 @@
   --l-dimension: var(--ink-2);
   --l-construction: var(--line);
 
+  /* Height of the strip at the foot of the 2D pane kept clear for the title
+     block and the scale chip. */
+  --titleblock-clear: 312px;
+
   --r: 9px;
   --r-sm: 6px;
   --sans: "Hanken Grotesk", system-ui, sans-serif;
@@ -691,6 +695,14 @@ main {
   accent-color: var(--accent);
 }
 
+/* The drawing never runs under the floating title block. Reserving a fixed
+   strip is deterministic; sizing the reserve as a fraction of the blank is
+   not, because the title block is a fixed pixel height while the blank's
+   scale changes with its aspect ratio. */
+#pane-2d .pane-canvas {
+  bottom: var(--titleblock-clear);
+}
+
 /* The 3D pane is narrow; its toolbar docks at the bottom so it does not sit
    on top of the pane label. */
 #pane-3d .viewport-toolbar {
@@ -874,9 +886,13 @@ main {
   }
 
   /* Title block does not float over the drawing on narrow screens — it drops
-     below as its own static spec panel. */
+     below as its own static spec panel, so the drawing takes the whole pane. */
   .titleblock {
     display: none;
+  }
+
+  #pane-2d .pane-canvas {
+    bottom: 0;
   }
 
   .scalechip {
