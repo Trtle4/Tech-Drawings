@@ -12,7 +12,7 @@ import { FIXTURES } from '../src/geometry/fixtures.js';
 import { blankSize, materialArea, resolveGeometry } from '../src/geometry/resolve.js';
 import { foldedFacePoints } from '../src/geometry/fold.js';
 import type { GeometryGraph, ResolvedGeometry } from '../src/geometry/types.js';
-import { flattenPath } from '../src/geometry/arrangement.js';
+import { renderSvg } from './render-svg.js';
 
 const OUT_DIR = resolvePath(dirname(fileURLToPath(import.meta.url)), '../out');
 
@@ -88,96 +88,6 @@ function depthOf(parent: Map<string, string>, id: string): number {
   return d;
 }
 
-/**
- * Shared design system tokens (parametric_design_system.md). Cool paper, petrol
- * teal accent — deliberately not the cream/terracotta look the design system
- * calls out as one to avoid.
- */
-const TOKEN = {
-  paper: '#E9EDF0',
-  panel2: '#F3F6F8',
-  ink: '#192227',
-  ink2: '#59656C',
-  ink3: '#8A959B',
-  line: '#D2D9DE',
-  grid: '#DBE1E6',
-  accent: '#0F6E77',
-  accentSoft: '#E0F0F1',
-  danger: '#B23A2E',
-} as const;
-
-/** Face tints: desaturated steps around the paper hue, so no face shouts. */
-const FACE_FILL = [
-  '#DCE4EA',
-  '#D5E1E2',
-  '#E0E2E8',
-  '#D8E3DD',
-  '#E3E1E4',
-  '#D3DDE4',
-  '#DEE4DC',
-  '#D9DEE6',
-];
-
-/** Flat drawing with each detected face tinted, so subdivision is visible. */
-function toSvg(graph: GeometryGraph, resolved: ResolvedGeometry): string {
-  const b = resolved.blankBounds ?? { min: { x: 0, y: 0 }, max: { x: 100, y: 100 } };
-  const pad = 20;
-  const w = b.max.x - b.min.x + pad * 2;
-  const h = b.max.y - b.min.y + pad * 2;
-  const parts: string[] = [];
-
-  resolved.faces.forEach((f, i) => {
-    const ring = (pts: { x: number; y: number }[]) =>
-      pts.map((p) => `${p.x.toFixed(3)},${p.y.toFixed(3)}`).join(' ');
-    const holes = f.holes
-      .map((hole) => `M ${hole.points.map((p) => `${p.x} ${p.y}`).join(' L ')} Z`)
-      .join(' ');
-    const outer = `M ${f.outer.points.map((p) => `${p.x} ${p.y}`).join(' L ')} Z`;
-    parts.push(
-      `<path d="${outer} ${holes}" fill-rule="evenodd" fill="${FACE_FILL[i % FACE_FILL.length]}" ` +
-        `fill-opacity="0.85" stroke="none"/>`,
-    );
-    void ring;
-    parts.push(
-      `<text x="${f.centroid.x}" y="${f.centroid.y}" font-family="'DM Mono',ui-monospace,monospace" ` +
-        `font-size="9" text-anchor="middle" fill="${TOKEN.ink2}">${f.id}</text>`,
-    );
-  });
-
-  const stroke: Record<string, string> = {
-    cut: `stroke="${TOKEN.ink}" stroke-width="1.1"`,
-    crease: `stroke="${TOKEN.accent}" stroke-width="0.8" stroke-dasharray="6 3"`,
-    perf: `stroke="${TOKEN.accent}" stroke-width="0.8" stroke-dasharray="8 2 1 2"`,
-    score: `stroke="${TOKEN.accent}" stroke-width="0.6" stroke-dasharray="4 3"`,
-    bleed: `stroke="${TOKEN.ink3}" stroke-width="0.5" stroke-dasharray="2 3"`,
-    dimension: `stroke="${TOKEN.ink2}" stroke-width="0.4"`,
-    construction: `stroke="${TOKEN.line}" stroke-width="0.4" stroke-dasharray="1 3"`,
-  };
-  for (const line of graph.lines) {
-    const pts = flattenPath(line.geometry);
-    if (pts.length < 2) continue;
-    const d = `M ${pts.map((p) => `${p.x.toFixed(3)} ${p.y.toFixed(3)}`).join(' L ')}`;
-    parts.push(`<path d="${d}" fill="none" ${stroke[line.type] ?? stroke.cut}/>`);
-  }
-
-  for (const hinge of resolved.hinges) {
-    const mid = { x: (hinge.a.x + hinge.b.x) / 2, y: (hinge.a.y + hinge.b.y) / 2 };
-    // Danger red by meaning, not decoration: this hinge has no rigid fold axis.
-    parts.push(
-      `<circle cx="${mid.x}" cy="${mid.y}" r="2.2" fill="${hinge.collinear ? TOKEN.accent : TOKEN.danger}"/>`,
-    );
-  }
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">
-<rect width="100%" height="100%" fill="${TOKEN.paper}"/>
-<defs><pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
-<path d="M24 0H0V24" fill="none" stroke="${TOKEN.grid}" stroke-width="1"/></pattern></defs>
-<rect width="100%" height="100%" fill="url(#grid)" opacity="0.55"/>
-<g transform="translate(${pad - b.min.x} ${h - pad + b.min.y}) scale(1 -1)">
-${parts.join('\n')}
-</g>
-</svg>`;
-}
 
 mkdirSync(OUT_DIR, { recursive: true });
 
@@ -185,7 +95,7 @@ for (const [name, make] of Object.entries(FIXTURES)) {
   const g = make();
   const resolved = resolveGeometry(g);
   report(name, g, resolved);
-  writeFileSync(resolvePath(OUT_DIR, `${name}.svg`), toSvg(g, resolved), 'utf8');
+  writeFileSync(resolvePath(OUT_DIR, `${name}.svg`), renderSvg(g, resolved), 'utf8');
 
   // Sanity check that the fold traversal produces finite geometry.
   const folded = foldedFacePoints(resolved, 1);

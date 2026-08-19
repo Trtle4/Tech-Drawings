@@ -162,6 +162,13 @@ export interface GeometryGraph {
   features: FeatureInstance[];
   /** Panel names, as points inside the panels they name. */
   faceSeeds?: FaceSeed[];
+  /**
+   * Default fold angles in radians, keyed by the role of the crease line. A
+   * style states its angles here rather than on the hinge, because hinges are
+   * discovered by face detection and do not exist yet when a style is
+   * generated. User overrides are applied on top at resolve time.
+   */
+  hingeAngles?: Record<string, number>;
   /** Role of the face to keep fixed when folding. Defaults to the largest face. */
   baseFaceRole?: string;
   meta?: Record<string, unknown>;

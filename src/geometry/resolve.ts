@@ -56,8 +56,24 @@ export function resolveGeometry(graph: GeometryGraph, opts: ResolveOptions = {})
   });
   unresolved.push(...hingeResult.unresolved);
 
-  // Reapply held fold angles. Keyed by hinge id first, then by face pair so an
-  // angle survives ids being renumbered on regeneration.
+  // Fold angles, weakest source first: the 90° default a hinge is born with,
+  // then the style's angle for that crease role, then any user override.
+  const styleAngles = graph.hingeAngles;
+  if (styleAngles) {
+    for (const h of hingeResult.hinges) {
+      for (const lineId of h.lineIds) {
+        const role = lineById.get(lineId)?.role;
+        const angle = role === undefined ? undefined : styleAngles[role];
+        if (angle !== undefined) {
+          h.angle = angle;
+          break;
+        }
+      }
+    }
+  }
+
+  // User overrides. Keyed by hinge id first, then by face pair so an angle
+  // survives ids being renumbered on regeneration.
   if (opts.angles) {
     for (const h of hingeResult.hinges) {
       const byId = opts.angles.get(h.id);

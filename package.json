@@ -8,7 +8,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "demo:faces": "tsx scripts/demo-faces.ts"
+    "demo:faces": "tsx scripts/demo-faces.ts",
+    "demo:styles": "tsx scripts/demo-styles.ts",
+    "diagnose:chains": "tsx scripts/diagnose-open-chains.ts"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",
