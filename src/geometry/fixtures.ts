@@ -165,6 +165,62 @@ export function awkwardBlank(): GeometryGraph {
   );
 }
 
+/**
+ * Open cut chains that terminate on a crease.
+ *
+ * An RSC slot and a locking tab are topologically identical — a region bounded
+ * by cuts on three sides and something else on the fourth. What separates them
+ * is whether the cut chain closes on itself:
+ *
+ *  a. closed slot        cuts close into a loop            → void
+ *  b. locking tab        three cuts ending on a crease     → material, hinged
+ *  c. thumb notch        open chain, both ends on the cut  → void
+ *                        outline, so the cuts still close
+ *  d. hand hole flap     arc cut ending on a crease        → material, hinged
+ *
+ * (b) and (d) are the interesting pair: nothing is removed, the panel is only
+ * slit, so the region stays board and folds on its crease.
+ */
+export function openCutChains(): GeometryGraph {
+  resetIds();
+  return graph(
+    [
+      // Blank outline, indented by the thumb notch on the top edge.
+      line({
+        type: 'cut',
+        role: 'blank.outline',
+        closed: true,
+        points: [
+          p(0, 0),
+          p(340, 0),
+          p(340, 140),
+          p(220, 140),
+          p(200, 110), // (c) thumb notch, cut into the edge
+          p(180, 140),
+          p(0, 140),
+        ],
+      }),
+      // (a) closed slot — a cut loop with nothing holding the middle
+      rect('cut', 'slot.closed', 20, 60, 40, 20),
+      // (b) locking tab — three cuts landing on the ends of a crease
+      seg('crease', 'tab.fold', p(100, 40), p(140, 40)),
+      line({
+        type: 'cut',
+        role: 'tab.outer',
+        points: [p(100, 40), p(100, 75), p(140, 75), p(140, 40)],
+      }),
+      // (d) hand hole with a hinged flap — same topology, curved
+      seg('crease', 'hand_hole.fold', p(250, 50), p(310, 50)),
+      line({
+        type: 'cut',
+        role: 'hand_hole.flap_edge',
+        path: { kind: 'arc', center: p(280, 50), radius: 30, startAngle: 0, endAngle: Math.PI },
+      }),
+    ],
+    { caliper: 3 },
+  );
+}
+
 /** Seal end carton, folded with non-90° hinges, for the fold traversal check. */
 export function shallowTray(): GeometryGraph {
   resetIds();

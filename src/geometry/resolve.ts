@@ -16,6 +16,12 @@ export interface ResolveOptions {
    * edit survive regeneration without the fold snapping back to 90°.
    */
   angles?: Map<string, number>;
+  /**
+   * Write the re-anchored seeds back into `graph.faceSeeds` (default true), so
+   * seeds track panels across successive edits without the caller having to
+   * remember to copy them. Set false to resolve without touching the input.
+   */
+  reanchorSeeds?: boolean;
 }
 
 /**
@@ -79,6 +85,10 @@ export function resolveGeometry(graph: GeometryGraph, opts: ResolveOptions = {})
   const allPoints: Vec2[] = [];
   for (const f of detected.faces) allPoints.push(...f.outer.points);
 
+  // Seeds heal by default: each one moves to the interior point of the face it
+  // matched, so it follows the panel through successive edits.
+  if (opts.reanchorSeeds !== false && graph.faceSeeds) graph.faceSeeds = detected.seeds;
+
   return {
     faces: detected.faces,
     hinges: hingeResult.hinges,
@@ -86,6 +96,7 @@ export function resolveGeometry(graph: GeometryGraph, opts: ResolveOptions = {})
     foldTree: tree,
     unreachableFaceIds: unreachable,
     unresolved,
+    faceSeeds: detected.seeds,
     blankBounds: boundsOf(allPoints),
   };
 }

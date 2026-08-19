@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { awkwardBlank, rectangleTwoCreases, rsc201, shallowTray } from '../fixtures.js';
+import { awkwardBlank, openCutChains, rectangleTwoCreases, rsc201, shallowTray } from '../fixtures.js';
 import { blankSize, materialArea, resolveGeometry } from '../resolve.js';
 import { circle, graph, rect, seg } from '../build.js';
 import { foldedFacePoints } from '../fold.js';
@@ -220,6 +220,82 @@ describe('the awkward blank', () => {
   });
 });
 
+describe('open cut chains terminating on a crease', () => {
+  const resolved = resolveGeometry(openCutChains());
+  const byArea = [...resolved.faces].sort((a, b) => a.area - b.area);
+
+  it('keeps the parent panel, the locking tab and the hand hole flap as material', () => {
+    expect(resolved.faces).toHaveLength(3);
+  });
+
+  it('treats a closed slot as void and a slit as material', () => {
+    // Blank 340 x 140 less the 600 mm² thumb notch and the 800 mm² closed
+    // slot. The tab and the flap are slit, not removed, so they still count.
+    expect(materialArea(resolved)).toBeCloseTo(340 * 140 - 600 - 800, 1);
+  });
+
+  it('hinges the locking tab to its parent on the crease', () => {
+    const tab = byArea[0]!;
+    expect(tab.area).toBeCloseTo(1400, 6);
+    const hinge = resolved.hinges.find((h) => h.faceA === tab.id || h.faceB === tab.id);
+    expect(hinge).toBeDefined();
+    expect(hinge!.collinear).toBe(true);
+    expect(hinge!.lineIds.some((id) => openCutChains().lines.find((l) => l.id === id)?.role === 'tab.fold')).toBe(true);
+  });
+
+  it('hinges the hand hole flap on its crease despite the curved cut', () => {
+    const flap = byArea[1]!;
+    // Semicircle of radius 30, chord-flattened so slightly under πr²/2.
+    expect(flap.area).toBeGreaterThan(Math.PI * 900 * 0.5 - 4);
+    expect(flap.area).toBeLessThan(Math.PI * 900 * 0.5);
+    expect(resolved.hinges.some((h) => h.faceA === flap.id || h.faceB === flap.id)).toBe(true);
+  });
+
+  it('records the closed slot, the tab and the flap as holes in the parent', () => {
+    const parent = byArea[2]!;
+    expect(parent.holes).toHaveLength(3);
+  });
+
+  it('folds both hinged features off the parent panel', () => {
+    expect(resolved.hinges).toHaveLength(2);
+    expect(resolved.foldTree!.order).toHaveLength(3);
+    expect(resolved.unreachableFaceIds).toEqual([]);
+    expect(resolved.unresolved).toEqual([]);
+  });
+
+  it('classifies every region the same way regardless of ray direction', () => {
+    // The regression this guards: with the tab classified by a +x ray it read
+    // as void, by a -y ray as material. Rotating the whole blank changes the
+    // ray direction relative to the geometry, so the result must not move.
+    const rotate = (deg: number) => {
+      const t = (deg * Math.PI) / 180;
+      const c = Math.cos(t);
+      const s = Math.sin(t);
+      const g = openCutChains();
+      for (const l of g.lines) {
+        if (l.geometry.kind === 'polyline') {
+          l.geometry.points = l.geometry.points.map((q) => ({
+            x: q.x * c - q.y * s,
+            y: q.x * s + q.y * c,
+          }));
+        } else {
+          const { center } = l.geometry;
+          l.geometry.center = { x: center.x * c - center.y * s, y: center.x * s + center.y * c };
+          l.geometry.startAngle += t;
+          l.geometry.endAngle += t;
+        }
+      }
+      return resolveGeometry(g);
+    };
+    for (const deg of [17, 90, 143, 270]) {
+      const r = rotate(deg);
+      expect(r.faces).toHaveLength(3);
+      expect(r.hinges).toHaveLength(2);
+      expect(materialArea(r)).toBeCloseTo(materialArea(resolved), 1);
+    }
+  });
+});
+
 describe('fold traversal', () => {
   it('handles a face graph with cycles by folding a spanning tree', () => {
     const resolved = resolveGeometry(shallowTray());
@@ -342,6 +418,67 @@ describe('face seeds', () => {
     );
     const miss = resolved.unresolved.find((u) => u.message.includes('ghost_panel'));
     expect(miss).toBeDefined();
+  });
+
+  it('re-anchors a matched seed to the interior of its face', () => {
+    const g = graph(base(), { faceSeeds: [{ role: 'body', point: p(290, 8) }] });
+    const resolved = resolveGeometry(g);
+    const seed = resolved.faceSeeds[0]!;
+    // Placed in the corner, healed to the centre of the 200 x 100 panel.
+    expect(seed.point.x).toBeCloseTo(200, 6);
+    expect(seed.point.y).toBeCloseTo(50, 6);
+    expect(g.faceSeeds![0]!.point).toEqual(seed.point);
+  });
+
+  it('is stable — re-resolving an unchanged blank does not drift the seed', () => {
+    const g = graph(base(), { faceSeeds: [{ role: 'body', point: p(290, 8) }] });
+    resolveGeometry(g);
+    const first = { ...g.faceSeeds![0]!.point };
+    for (let i = 0; i < 5; i++) resolveGeometry(g);
+    expect(g.faceSeeds![0]!.point).toEqual(first);
+  });
+
+  it('follows a panel across successive edits instead of falling out of it', () => {
+    // The seed names the left panel, and the crease that bounds it marches
+    // left in steps. Healing re-centres the seed after every resolve, so it
+    // stays in the panel it named.
+    const make = () =>
+      graph(
+        [rect('cut', 'blank.outline', 0, 0, 300, 100), seg('crease', 'c', p(280, 0), p(280, 100))],
+        { faceSeeds: [{ role: 'left_panel', point: p(270, 50) }] },
+      );
+    const dragTo = (g: ReturnType<typeof make>, x: number) => {
+      g.lines.find((l) => l.role === 'c')!.geometry = {
+        kind: 'polyline',
+        points: [p(x, 0), p(x, 100)],
+      };
+    };
+
+    const healing = make();
+    resolveGeometry(healing); // seed heals from the edge to the panel centre
+    for (const x of [240, 200, 160, 120, 80]) {
+      dragTo(healing, x);
+      const body = resolveGeometry(healing).faces.find((f) => f.role === 'left_panel');
+      expect(body, `seed lost the panel at x=${x}`).toBeDefined();
+      expect(body!.area).toBeCloseTo(x * 100, 6);
+    }
+
+    // Control: pinned at its original spot, the seed is overtaken by the drag
+    // and ends up naming the panel on the other side of the crease.
+    const pinned = make();
+    resolveGeometry(pinned, { reanchorSeeds: false });
+    dragTo(pinned, 240);
+    const wrong = resolveGeometry(pinned, { reanchorSeeds: false }).faces.find(
+      (f) => f.role === 'left_panel',
+    )!;
+    expect(wrong.area).toBeCloseTo(60 * 100, 6); // the right panel, not the left
+  });
+
+  it('leaves an unmatched seed where it was so it can recover', () => {
+    const g = graph(base(), { faceSeeds: [{ role: 'ghost', point: p(400, 50) }] });
+    const resolved = resolveGeometry(g);
+    expect(resolved.faceSeeds[0]!.point).toEqual(p(400, 50));
+    expect(resolved.unresolved.some((u) => u.message.includes('ghost'))).toBe(true);
   });
 
   it('does not name a face through one of its holes', () => {

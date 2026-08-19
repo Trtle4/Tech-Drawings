@@ -5,6 +5,7 @@ import {
   EPS,
   WELD_TOL,
   add,
+  boundsOf,
   centroidOf,
   interiorPoint,
   normalize,
@@ -21,6 +22,8 @@ export interface DetectedFaces {
   unresolved: UnresolvedItem[];
   /** Arrangement edge id -> ids of the material faces it borders. */
   edgeFaces: Map<number, string[]>;
+  /** Seeds re-anchored to the faces they matched. Unmatched seeds pass through. */
+  seeds: FaceSeed[];
 }
 
 interface CycleInfo {
@@ -49,10 +52,12 @@ export function detectFaces(
   const lineById = new Map(lines.map((l) => [l.id, l]));
 
   // Material boundary as a raw segment soup — the only thing that decides
-  // whether a detected region is board or air.
+  // whether a detected region is board or air. Only cuts that close count; see
+  // `closingCutEdges`.
+  const closing = closingCutEdges(arr);
   const cutSegs: [Vec2, Vec2][] = [];
   for (const e of arr.edges) {
-    if (!e.types.some((t) => BOUNDING_TYPES.includes(t))) continue;
+    if (!closing.has(e.id)) continue;
     cutSegs.push([arr.vertices[e.a]!.p, arr.vertices[e.b]!.p]);
   }
 
@@ -187,11 +192,16 @@ export function detectFaces(
   //    once, so bounding roles cannot identify a face reliably. A seed sits
   //    inside its panel and keeps naming it after the panel is resized or the
   //    user drags an edge.
+  //
+  //    Each matched seed is re-anchored to the interior point of the face it
+  //    landed on, so a seed walks along with the panel edit by edit instead of
+  //    staying where the style first dropped it and eventually falling out of
+  //    a panel that moved away from it.
+  const healed: FaceSeed[] = [];
   for (const seed of seeds) {
-    const hit = faces.find(
-      (f) => pointInRing(seed.point, f.outer.points) && !f.holes.some((h) => pointInRing(seed.point, h.points)),
-    );
+    const hit = faces.find((f) => faceContains(f, seed.point));
     if (!hit) {
+      healed.push(seed);
       unresolved.push({
         reason: 'degenerate_face',
         lineIds: [],
@@ -201,9 +211,106 @@ export function detectFaces(
     }
     hit.role = seed.role;
     if (seed.kind) hit.kind = seed.kind;
+    const anchor = faceInteriorPoint(hit) ?? seed.point;
+    healed.push({ ...seed, point: anchor });
   }
 
-  return { faces, unresolved: dedupe(unresolved), edgeFaces };
+  return { faces, unresolved: dedupe(unresolved), edgeFaces, seeds: healed };
+}
+
+/** Inside the face's outer ring and outside every hole in it. */
+export function faceContains(face: Face, p: Vec2): boolean {
+  return (
+    pointInRing(p, face.outer.points) && !face.holes.some((hole) => pointInRing(p, hole.points))
+  );
+}
+
+/**
+ * A point inside the face's material — inside the outer ring and clear of every
+ * hole. Used to re-anchor face seeds, so a panel with a peg hole in the middle
+ * of it never re-anchors its own name into the hole.
+ */
+export function faceInteriorPoint(face: Face): Vec2 | null {
+  const centroid = centroidOf(face.outer.points);
+  if (faceContains(face, centroid)) return centroid;
+
+  const fromRing = interiorPoint(face.outer.points);
+  if (fromRing && faceContains(face, fromRing)) return fromRing;
+
+  const b = boundsOf(face.outer.points);
+  if (!b) return null;
+  // Sample increasingly finely rather than giving up — a panel that is mostly
+  // hole still has material somewhere.
+  for (const n of [8, 24, 64]) {
+    for (let i = 1; i < n; i++) {
+      for (let j = 1; j < n; j++) {
+        const cand = {
+          x: b.min.x + ((b.max.x - b.min.x) * i) / n,
+          y: b.min.y + ((b.max.y - b.min.y) * j) / n,
+        };
+        if (faceContains(face, cand)) return cand;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * The cut edges that actually separate board from air.
+ *
+ * Even-odd ray casting assumes the cut lines form a closed boundary. They do
+ * not always: cutting three sides of a locking tab and creasing the fourth
+ * leaves an open cut chain, and a ray leaving through the crease side counts
+ * one crossing fewer than a ray leaving any other way. The classification then
+ * depends on which way the ray points, which is no classification at all.
+ *
+ * The discriminator is not whether a chain is open — a thumb notch is an open
+ * chain and behaves perfectly, because both its ends land on the outline and
+ * the cuts still close. It is whether the chain closes *against other cuts*.
+ * A cut edge bounds material against air exactly when it lies on a cycle of
+ * the cut-only subgraph, so iteratively pruning degree-1 vertices leaves the
+ * true boundary behind. What prunes away is a slit: a knife path with board on
+ * both sides, which removes nothing.
+ *
+ * Note this is the dual of "let a crease close the ring". Adding the crease
+ * would close a loop *around* the tab and classify it as removed material —
+ * exactly backwards. Nothing here looks at shape or role, only at whether the
+ * cuts close.
+ */
+function closingCutEdges(arr: Arrangement): Set<number> {
+  const alive = new Set<number>();
+  const incident = new Map<number, number[]>();
+  for (const e of arr.edges) {
+    if (!e.types.some((t) => BOUNDING_TYPES.includes(t))) continue;
+    alive.add(e.id);
+    for (const v of [e.a, e.b]) {
+      const list = incident.get(v);
+      if (list) list.push(e.id);
+      else incident.set(v, [e.id]);
+    }
+  }
+
+  const degree = new Map<number, number>();
+  for (const [v, list] of incident) degree.set(v, list.length);
+  const queue = [...degree].filter(([, d]) => d === 1).map(([v]) => v);
+
+  while (queue.length > 0) {
+    const v = queue.pop()!;
+    if (degree.get(v) !== 1) continue;
+    const edgeId = incident.get(v)!.find((id) => alive.has(id));
+    if (edgeId === undefined) {
+      degree.set(v, 0);
+      continue;
+    }
+    alive.delete(edgeId);
+    const e = arr.edges[edgeId]!;
+    for (const end of [e.a, e.b]) {
+      const d = (degree.get(end) ?? 0) - 1;
+      degree.set(end, d);
+      if (d === 1) queue.push(end);
+    }
+  }
+  return alive;
 }
 
 /**

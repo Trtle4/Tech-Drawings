@@ -270,6 +270,11 @@ export interface ResolvedGeometry {
   unreachableFaceIds: string[];
   /** Everything the 2D canvas should still draw but 3D cannot fold. */
   unresolved: UnresolvedItem[];
+  /**
+   * Seeds re-anchored to the faces they matched, so they track panels across
+   * edits. Seeds that matched nothing pass through unmoved and are reported.
+   */
+  faceSeeds: FaceSeed[];
   /** Overall flat extents of the material, for the blank size callout. */
   blankBounds: { min: Vec2; max: Vec2 } | null;
 }
