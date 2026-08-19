@@ -88,15 +88,34 @@ function depthOf(parent: Map<string, string>, id: string): number {
   return d;
 }
 
+/**
+ * Shared design system tokens (parametric_design_system.md). Cool paper, petrol
+ * teal accent — deliberately not the cream/terracotta look the design system
+ * calls out as one to avoid.
+ */
+const TOKEN = {
+  paper: '#E9EDF0',
+  panel2: '#F3F6F8',
+  ink: '#192227',
+  ink2: '#59656C',
+  ink3: '#8A959B',
+  line: '#D2D9DE',
+  grid: '#DBE1E6',
+  accent: '#0F6E77',
+  accentSoft: '#E0F0F1',
+  danger: '#B23A2E',
+} as const;
+
+/** Face tints: desaturated steps around the paper hue, so no face shouts. */
 const FACE_FILL = [
-  '#c9d6e3',
-  '#d8ccbc',
-  '#c4d3c8',
-  '#ddccd6',
-  '#cdd0dd',
-  '#dcd6c1',
-  '#c6d8d8',
-  '#d6c8c8',
+  '#DCE4EA',
+  '#D5E1E2',
+  '#E0E2E8',
+  '#D8E3DD',
+  '#E3E1E4',
+  '#D3DDE4',
+  '#DEE4DC',
+  '#D9DEE6',
 ];
 
 /** Flat drawing with each detected face tinted, so subdivision is visible. */
@@ -120,19 +139,19 @@ function toSvg(graph: GeometryGraph, resolved: ResolvedGeometry): string {
     );
     void ring;
     parts.push(
-      `<text x="${f.centroid.x}" y="${f.centroid.y}" font-family="monospace" font-size="9" ` +
-        `text-anchor="middle" fill="#33404d">${f.id}</text>`,
+      `<text x="${f.centroid.x}" y="${f.centroid.y}" font-family="'DM Mono',ui-monospace,monospace" ` +
+        `font-size="9" text-anchor="middle" fill="${TOKEN.ink2}">${f.id}</text>`,
     );
   });
 
   const stroke: Record<string, string> = {
-    cut: 'stroke="#1d2733" stroke-width="1.1"',
-    crease: 'stroke="#b4593c" stroke-width="0.8" stroke-dasharray="6 3"',
-    perf: 'stroke="#b4593c" stroke-width="0.8" stroke-dasharray="8 2 1 2"',
-    score: 'stroke="#b4593c" stroke-width="0.6" stroke-dasharray="4 3"',
-    bleed: 'stroke="#a8b2bd" stroke-width="0.5" stroke-dasharray="2 3"',
-    dimension: 'stroke="#7d8896" stroke-width="0.4"',
-    construction: 'stroke="#c3cad2" stroke-width="0.4" stroke-dasharray="1 3"',
+    cut: `stroke="${TOKEN.ink}" stroke-width="1.1"`,
+    crease: `stroke="${TOKEN.accent}" stroke-width="0.8" stroke-dasharray="6 3"`,
+    perf: `stroke="${TOKEN.accent}" stroke-width="0.8" stroke-dasharray="8 2 1 2"`,
+    score: `stroke="${TOKEN.accent}" stroke-width="0.6" stroke-dasharray="4 3"`,
+    bleed: `stroke="${TOKEN.ink3}" stroke-width="0.5" stroke-dasharray="2 3"`,
+    dimension: `stroke="${TOKEN.ink2}" stroke-width="0.4"`,
+    construction: `stroke="${TOKEN.line}" stroke-width="0.4" stroke-dasharray="1 3"`,
   };
   for (const line of graph.lines) {
     const pts = flattenPath(line.geometry);
@@ -143,13 +162,17 @@ function toSvg(graph: GeometryGraph, resolved: ResolvedGeometry): string {
 
   for (const hinge of resolved.hinges) {
     const mid = { x: (hinge.a.x + hinge.b.x) / 2, y: (hinge.a.y + hinge.b.y) / 2 };
+    // Danger red by meaning, not decoration: this hinge has no rigid fold axis.
     parts.push(
-      `<circle cx="${mid.x}" cy="${mid.y}" r="2.2" fill="${hinge.collinear ? '#b4593c' : '#c0392b'}"/>`,
+      `<circle cx="${mid.x}" cy="${mid.y}" r="2.2" fill="${hinge.collinear ? TOKEN.accent : TOKEN.danger}"/>`,
     );
   }
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">
-<rect width="100%" height="100%" fill="#f4f1ea"/>
+<rect width="100%" height="100%" fill="${TOKEN.paper}"/>
+<defs><pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+<path d="M24 0H0V24" fill="none" stroke="${TOKEN.grid}" stroke-width="1"/></pattern></defs>
+<rect width="100%" height="100%" fill="url(#grid)" opacity="0.55"/>
 <g transform="translate(${pad - b.min.x} ${h - pad + b.min.y}) scale(1 -1)">
 ${parts.join('\n')}
 </g>
