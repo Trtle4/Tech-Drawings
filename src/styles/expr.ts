@@ -22,7 +22,19 @@ const FUNCTIONS: Record<string, (...args: number[]) => number> = {
   floor: (a) => Math.floor(a),
   ceil: (a) => Math.ceil(a),
   sqrt: (a) => Math.sqrt(a),
+  // Trig, in radians. Needed by any style that places geometry on a slope or
+  // an arc rather than on a grid.
+  sin: (a) => Math.sin(a),
+  cos: (a) => Math.cos(a),
+  tan: (a) => Math.tan(a),
+  atan2: (a, b) => Math.atan2(a, b!),
+  hypot: (...a) => Math.hypot(...a),
+  rad: (a) => (a * Math.PI) / 180,
+  deg: (a) => (a * 180) / Math.PI,
 };
+
+/** Constants available to every expression, under any scope. */
+const CONSTANTS: Record<string, number> = { PI: Math.PI, E: Math.E };
 
 export class ExprError extends Error {
   constructor(
@@ -146,6 +158,7 @@ export function evalExpr(expr: Expr, scope: Scope): number {
         }
         return fn(...args);
       }
+      if (t.value in CONSTANTS) return CONSTANTS[t.value]!;
       if (!(t.value in scope)) {
         const known = Object.keys(scope).sort().join(', ');
         throw new ExprError(`Unknown parameter "${t.value}" (known: ${known})`, expr as string);
@@ -177,7 +190,7 @@ export function dependencies(expr: Expr): string[] {
     if (t.kind !== 'ident') return;
     const next = tokens[i + 1];
     const isCall = next && next.kind === 'op' && next.value === '(';
-    if (!isCall) out.add(t.value);
+    if (!isCall && !(t.value in CONSTANTS)) out.add(t.value);
   });
   return [...out];
 }

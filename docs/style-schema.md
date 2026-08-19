@@ -114,22 +114,48 @@ from:
 
 Out-of-range input clamps and warns rather than blanking the drawing.
 
+## The grid is a convenience layer, not the model
+
+`grid` is optional. A style may emit `extraLines` and `extraSeeds` directly and
+never touch it — `proof-tapered-tray.ts` does exactly that, and is kept in the
+tests for no other reason. It has trapezoid faces, 62° folds and an arc edge,
+and it resolves and folds clean.
+
+Both paths converge on the same `GeometryGraph`, and nothing downstream knows
+which produced it. The test suite pins this: every style, grid or not, is
+resolved at six rotations and must return the same faces, the same hinges, the
+same areas and a congruent folded solid. The grid itself is axis-aligned by
+construction — that is what a grid is — but face detection, hinge extraction and
+the fold traversal are not.
+
+### Arcs
+
+Curved edges survive the whole pipeline. `arcThrough` takes two endpoints and a
+sagitta, which is how a curved edge is actually dimensioned, and solves the
+centre; a zero bulge degrades to a straight line rather than erroring. Arcs stay
+arcs on the line object for DXF and dimensioning, and flatten only for topology.
+
 ## What the grid does not cover
 
 Honest about the limits, since the point is whether the rest of the catalogue is
 data:
 
 - **Covers well** — FEFCO 02xx slotted cases, 03xx slotted trays, most ECMA A/B
-  straight-tuck and reverse-tuck cartons. These blanks genuinely are grids.
-- **Needs `extraLines`** — dust flaps with angled edges, tuck tongues, locking
-  slits, hex and round corners. The hook exists and takes expressions, but each
-  such style writes its own points rather than getting them from the grid.
-- **Not yet expressible** — non-rectangular cells (a trapezoidal tray wall),
-  and cells whose size depends on a neighbour's fold angle. Both are additive:
-  a `shape` field on `CellSpec` and a solved-dimension pass, neither of which
-  changes what exists.
+  straight-tuck and reverse-tuck cartons.
+- **Needed one extension** — the seal end carton's minor flaps are shorter than
+  its major flaps while sharing a flap row, so `CellSpec.inset` shrinks a cell
+  from named sides of its uniform track. Inset from the free edge, never the
+  fold edge, or the crease leaves the track boundary its neighbour expects.
+- **Goes through `extraLines`** — anything not a rectangle: curved gussets,
+  tapered walls, tuck tongues, angled dust flaps. This is a supported path, not
+  a fallback.
+- **Not expressible at all** — a dimension solved from another fold's angle.
+  The FEFCO 0300 corner tabs are the live example: creased at a fixed 90°, which
+  is right only while the walls are square. Splay them and the tabs swing wide,
+  because the correct angle is the dihedral between two splayed walls. That is
+  constraint solving, explicitly out of scope for v1.
 
-The bags are the real test of that boundary and are next in the build order.
+The bags are the next test of that boundary.
 
 ## Out of scope, as before
 

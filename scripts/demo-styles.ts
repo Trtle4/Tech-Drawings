@@ -8,7 +8,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { STYLES, compileStyle } from '../src/styles/index.js';
+import { STYLES, compileStyle, proofTaperedTray } from '../src/styles/index.js';
 import { blankSize, materialArea, resolveGeometry } from '../src/geometry/resolve.js';
 import { foldedFacePoints } from '../src/geometry/fold.js';
 import { renderSvg } from './render-svg.js';
@@ -17,6 +17,15 @@ const OUT_DIR = resolvePath(dirname(fileURLToPath(import.meta.url)), '../out');
 mkdirSync(OUT_DIR, { recursive: true });
 
 const CASES: Record<string, Record<string, number>[]> = {
+  'proof.tapered_tray': [{ W: 140, D: 100, wall: 45, splay: 12, lip: 14, wallAngle: 62 }],
+  'carton.seal_end': [
+    { L: 90, W: 45, H: 160, caliper: 0.45 },
+    { L: 200, W: 60, H: 90, caliper: 0.6 },
+  ],
+  'fefco.0300': [
+    { L: 300, W: 220, wallH: 75, caliper: 3 },
+    { L: 300, W: 220, wallH: 75, caliper: 3, wallAngle: 70 },
+  ],
   'fefco.0201': [
     { L: 200, W: 150, H: 250, caliper: 3 },
     { L: 400, W: 300, H: 120, caliper: 5 },
@@ -24,7 +33,7 @@ const CASES: Record<string, Record<string, number>[]> = {
   ],
 };
 
-for (const style of STYLES) {
+for (const style of [...STYLES, proofTaperedTray]) {
   console.log(`\n${'━'.repeat(74)}`);
   console.log(`  ${style.standard ?? ''} ${style.code ?? ''}  ${style.name}  [${style.id}]`.trim());
   console.log('━'.repeat(74));
@@ -71,8 +80,11 @@ for (const style of STYLES) {
       `    ${resolved.faces.length} faces, ${resolved.hinges.length} hinges, ` +
         `${compiled.graph.seals.length} seal(s), ${resolved.unresolved.length} unresolved`,
     );
-    const asked = [p.L ?? 0, p.W ?? 0, p.H ?? 0].sort((a, b) => a - b).join(' × ');
-    console.log(`    folds to ${box} mm  (asked for ${asked})`);
+    // Only cases that declare L/W/H can state what they asked for.
+    const want = ['L', 'W', 'H'].map((k) => p[k]).filter((v): v is number => v !== undefined);
+    const asked =
+      want.length === 3 ? `  (asked for ${want.sort((a, b) => a - b).join(' × ')})` : '';
+    console.log(`    folds to ${box} mm${asked}`);
     for (const w of compiled.warnings) console.log(`    ! ${w}`);
 
     const name = `${style.id.replace(/\./g, '')}-${i + 1}`;

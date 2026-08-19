@@ -74,6 +74,16 @@ export interface CellSpec {
   presentIf?: Expr;
   /** Marks the face the fold traversal holds fixed. Exactly one, or none. */
   base?: boolean;
+  /**
+   * Shrink the cell from the named sides of its track, in mm.
+   *
+   * Tracks are uniform, but real cartons are not: a seal end carton's minor
+   * flaps are shorter than its major flaps even though both sit in the same
+   * flap row. Inset from the side away from the fold, so the crease stays on
+   * the track boundary where its neighbour expects it and only the free edge
+   * moves in.
+   */
+  inset?: { top?: Expr; bottom?: Expr; left?: Expr; right?: Expr };
 }
 
 /**
@@ -139,13 +149,31 @@ export interface FeatureSpec {
   presentIf?: Expr;
 }
 
-/** Geometry the grid cannot express. Coordinates are expressions. */
+/**
+ * Geometry the grid cannot express. Coordinates are expressions.
+ *
+ * A style may use `extraLines` alone and skip the grid entirely — the grid is a
+ * convenience for blanks that happen to be grids, not the canonical model.
+ *
+ * Three ways to give an arc:
+ *  - `arc`         centre, radius and angles, when those are what you know
+ *  - `arcThrough`  two endpoints and a bulge, which is how a curved edge is
+ *                  actually dimensioned. The compiler solves the centre.
+ *  - `points`      a polyline, for everything else
+ */
 export interface ExtraLineSpec {
   type: LineType;
   role: string;
   points?: { x: Expr; y: Expr }[];
   closed?: boolean;
+  /** Angles in degrees, CCW from +x. */
   arc?: { center: { x: Expr; y: Expr }; radius: Expr; startAngle: Expr; endAngle: Expr };
+  /**
+   * An arc from `from` to `to`, bulging by `sagitta` at its midpoint. Positive
+   * sagitta bulges to the left of the from -> to direction. Zero degrades to a
+   * straight line rather than erroring.
+   */
+  arcThrough?: { from: { x: Expr; y: Expr }; to: { x: Expr; y: Expr }; sagitta: Expr };
   angle?: Expr;
   presentIf?: Expr;
 }

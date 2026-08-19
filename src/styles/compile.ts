@@ -11,9 +11,13 @@ import type {
   FeatureInstance,
   GeometryGraph,
   LineType,
+  Path,
   SealZone,
   Vec2,
 } from '../geometry/types.js';
+import { STRUCTURAL_TYPES } from '../geometry/types.js';
+import { flattenPath } from '../geometry/arrangement.js';
+import { boundsOf } from '../geometry/math.js';
 import { evalExpr, type Expr, type Scope } from './expr.js';
 import type {
   BoundaryKind,
@@ -134,6 +138,19 @@ export function compileStyle(def: StyleDefinition, opts: CompileOptions = {}): C
       size: { x: evalExpr(f.size.x, scope), y: evalExpr(f.size.y, scope) },
       sourceStyle: def.id,
     });
+  }
+
+  // A gridless style has no tracks to measure, so the blank comes from the
+  // geometry it emitted. Grid styles keep the declared figure, which is what
+  // makes the cross-check against `resolveGeometry` meaningful.
+  if (!def.grid) {
+    const pts: Vec2[] = [];
+    for (const line of lines) {
+      if (!STRUCTURAL_TYPES.includes(line.type)) continue;
+      pts.push(...flattenPath(line.geometry));
+    }
+    const b = boundsOf(pts);
+    if (b) blank = { width: b.max.x - b.min.x, height: b.max.y - b.min.y };
   }
 
   const baseRole = def.baseFaceRole ?? def.grid?.cells.find((c) => c.base)?.role;
@@ -346,6 +363,15 @@ function placeCells(
         const b = boundaryFor(boundaries, 'h', rows[r]!.id, columns[c]!.id, scope);
         if (b.kind === 'slot') cell.y1 -= b.width / 2;
       }
+      // Per-cell inset, applied after slots so a cell can be both slotted and
+      // shortened. This is what lets one flap row hold flaps of two depths.
+      if (cell.inset) {
+        if (cell.inset.left !== undefined) cell.x0 += evalExpr(cell.inset.left, scope);
+        if (cell.inset.right !== undefined) cell.x1 -= evalExpr(cell.inset.right, scope);
+        if (cell.inset.bottom !== undefined) cell.y0 += evalExpr(cell.inset.bottom, scope);
+        if (cell.inset.top !== undefined) cell.y1 -= evalExpr(cell.inset.top, scope);
+      }
+
       if (cell.x1 - cell.x0 <= 0 || cell.y1 - cell.y0 <= 0) {
         warnings.push(`Cell "${cell.role}" collapsed to nothing and was dropped.`);
         grid[r]![c] = null;
@@ -526,6 +552,56 @@ function emitGrid(
   }
 }
 
+/**
+ * Solve an arc from two endpoints and a sagitta.
+ *
+ * Writing this as centre + radius + angles in the definition would mean an
+ * atan2 in the data for every curved edge; a curved edge is dimensioned by
+ * where it starts, where it ends, and how far it bows.
+ */
+function solveArcThrough(a: Vec2, b: Vec2, sagitta: number): Path {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const chord = Math.hypot(dx, dy);
+  // Too flat to be an arc, or degenerate endpoints — a straight line is the
+  // right answer, not an error.
+  if (chord < 1e-9 || Math.abs(sagitta) < 1e-6) {
+    return { kind: 'polyline', points: [a, b] };
+  }
+  // Left normal of a -> b.
+  const nx = -dy / chord;
+  const ny = dx / chord;
+  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+
+  // Signed radius: R = (c²/4 + u²) / 2u, centre at mid + n·(u − R).
+  const rSigned = (chord * chord * 0.25 + sagitta * sagitta) / (2 * sagitta);
+  const t = sagitta - rSigned;
+  const center = { x: mid.x + nx * t, y: mid.y + ny * t };
+  const radius = Math.abs(rSigned);
+
+  const ang = (p: Vec2) => Math.atan2(p.y - center.y, p.x - center.x);
+  const start = ang(a);
+  let end = ang(b);
+  const bulge = ang({ x: mid.x + nx * sagitta, y: mid.y + ny * sagitta });
+
+  // Pick the winding that actually passes through the bulge point, so the
+  // flattened chord run bows the way the definition asked for.
+  const passesThrough = (e: number) => {
+    const span = e - start;
+    const toBulge = bulge - start;
+    const norm = (v: number) => {
+      let x = v;
+      while (x > Math.PI) x -= 2 * Math.PI;
+      while (x < -Math.PI) x += 2 * Math.PI;
+      return x;
+    };
+    return Math.sign(norm(toBulge)) === Math.sign(span) && Math.abs(norm(toBulge)) <= Math.abs(span);
+  };
+  if (!passesThrough(end)) end += end > start ? -2 * Math.PI : 2 * Math.PI;
+
+  return { kind: 'arc', center, radius, startAngle: start, endAngle: end };
+}
+
 function emitExtraLine(
   spec: ExtraLineSpec,
   scope: Scope,
@@ -534,22 +610,34 @@ function emitExtraLine(
   lines: DrawingLine[],
   hingeAngles: Record<string, number>,
 ): void {
-  const geometry = spec.arc
-    ? ({
-        kind: 'arc' as const,
-        center: { x: evalExpr(spec.arc.center.x, scope), y: evalExpr(spec.arc.center.y, scope) },
-        radius: evalExpr(spec.arc.radius, scope),
-        startAngle: (evalExpr(spec.arc.startAngle, scope) * Math.PI) / 180,
-        endAngle: (evalExpr(spec.arc.endAngle, scope) * Math.PI) / 180,
-      })
-    : ({
-        kind: 'polyline' as const,
-        points: (spec.points ?? []).map((q) => ({
-          x: evalExpr(q.x, scope),
-          y: evalExpr(q.y, scope),
-        })),
-        ...(spec.closed ? { closed: true } : {}),
-      });
+  const pt = (q: { x: Expr; y: Expr }): Vec2 => ({
+    x: evalExpr(q.x, scope),
+    y: evalExpr(q.y, scope),
+  });
+
+  let geometry: Path;
+  if (spec.arcThrough) {
+    geometry = solveArcThrough(
+      pt(spec.arcThrough.from),
+      pt(spec.arcThrough.to),
+      evalExpr(spec.arcThrough.sagitta, scope),
+    );
+  } else if (spec.arc) {
+    geometry = {
+      kind: 'arc',
+      center: pt(spec.arc.center),
+      radius: evalExpr(spec.arc.radius, scope),
+      startAngle: (evalExpr(spec.arc.startAngle, scope) * Math.PI) / 180,
+      endAngle: (evalExpr(spec.arc.endAngle, scope) * Math.PI) / 180,
+    };
+  } else {
+    geometry = {
+      kind: 'polyline',
+      points: (spec.points ?? []).map(pt),
+      ...(spec.closed ? { closed: true } : {}),
+    };
+  }
+
   lines.push({
     id: idFor(spec.role),
     type: spec.type,
