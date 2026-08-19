@@ -1,0 +1,19 @@
+{
+  "name": "tech-drawings",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Packaging technical drawing tool — 2D drafting, folded 3D preview, layered DXF output.",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "demo:faces": "tsx scripts/demo-faces.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
