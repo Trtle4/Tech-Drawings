@@ -27,6 +27,9 @@ const CASES: Record<string, Record<string, number>[]> = {
     { L: 300, W: 220, wallH: 75, caliper: 3, wallAngle: 70 },
   ],
   'fefco.0200': [{ L: 200, W: 150, H: 250, caliper: 3 }],
+  'bag.pillow': [{ bagW: 150, bagL: 240, finSeal: 10, endSeal: 12 }],
+  'bag.sup': [{ W: 140, L: 200, G: 35, S: 10, pinch: 8 }],
+  'bag.gusseted': [{ bagW: 120, bagD: 70, bagL: 300, finSeal: 10, endSeal: 14 }],
   'fefco.0201': [
     { L: 200, W: 150, H: 250, caliper: 3 },
     { L: 400, W: 300, H: 120, caliper: 5 },

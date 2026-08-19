@@ -155,7 +155,30 @@ data:
   because the correct angle is the dihedral between two splayed walls. That is
   constraint solving, explicitly out of scope for v1.
 
-The bags are the next test of that boundary.
+### How the bags landed
+
+The pillow and the gusseted bag are grids and needed nothing new. The SUP is
+gridless, and two things force it: the pinch is an arc pair on the outline, and
+the gusset halves span the pinched width while the panels span the full width,
+so the side-seal creases stop at the gusset rather than running the track. Both
+are things a grid track cannot do.
+
+Writing the SUP found one trap worth recording. Its gusset fold first
+terminated on the *tangent point* of a single pinch arc. Flattened chords fall
+just inside the true arc, so the fold landed a hair outside the material and
+the face count silently dropped — and it passed or failed depending on the
+sagitta, because whether a chord vertex happened to land on the apex is luck.
+The fix is to make the narrowest point an explicit vertex where two arcs meet:
+a shared vertex welds exactly, a tangency does not. Any style terminating a
+line on a curve should do the same.
+
+### Bags do not fold
+
+A bag has no rigid folded state. All three fold to LAY-FLAT, which is real and
+checkable — the pillow and gusseted bags to W x L x fin, the SUP to
+(W + 2S) x L x 0. The formed, filled shape is a soft-body forming problem the
+fold traversal does not model and v1 does not attempt. The 3D pane will show a
+flat bag; that is a known limit, not a defect.
 
 ## Out of scope, as before
 

@@ -7,6 +7,9 @@ import { fefco0201 } from './catalog/fefco0201.js';
 import { fefco0200 } from './catalog/fefco0200.js';
 import { slitCornerTray } from './catalog/slit-corner-tray.js';
 import { sealEndCarton } from './catalog/seal-end-carton.js';
+import { bagPillow } from './catalog/bag-pillow.js';
+import { bagGusseted } from './catalog/bag-gusseted.js';
+import { bagSup } from './catalog/bag-sup.js';
 import { proofTaperedTray } from './catalog/proof-tapered-tray.js';
 
 /**
@@ -15,20 +18,24 @@ import { proofTaperedTray } from './catalog/proof-tapered-tray.js';
  * v1 ships the RSC. The remaining FEFCO and ECMA entries are data files added
  * here — the compiler does not change to accept them.
  *
- * Still to come in v1: the three bags (pillow, SUP, gusseted).
+ * All v1 styles are present. Further FEFCO and ECMA entries are data files
+ * added here — the compiler does not change to accept them.
  */
 export const STYLES: readonly StyleDefinition[] = [
   fefco0201,
   fefco0200,
   slitCornerTray,
   sealEndCarton,
+  bagPillow,
+  bagSup,
+  bagGusseted,
 ];
 
 export const STYLE_BY_ID: ReadonlyMap<string, StyleDefinition> = new Map(
   STYLES.map((s) => [s.id, s]),
 );
 
-export { fefco0201, fefco0200, slitCornerTray, sealEndCarton };
+export { fefco0201, fefco0200, slitCornerTray, sealEndCarton, bagPillow, bagSup, bagGusseted };
 
 /**
  * Not part of the catalogue. A throwaway style defined without the grid, kept

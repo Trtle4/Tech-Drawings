@@ -1007,7 +1007,7 @@ main {
   <header id="topbar">
     <div class="brand"><h1>Dieline Studio</h1><span class="part">GEOMETRY PREVIEW</span></div>
     <div class="spacer"></div>
-    <div id="style-tabs"><button class="tbtn on" data-view="view-fefco_0201">Regular Slotted Case</button><button class="tbtn" data-view="view-fefco_0200">Half Slotted Container</button><button class="tbtn" data-view="view-tray_slit_corner">Slit Corner Tray</button><button class="tbtn" data-view="view-carton_seal_end">Seal End Carton</button><button class="tbtn" data-view="view-proof_tapered_tray">Tapered tray (proof)</button></div>
+    <div id="style-tabs"><button class="tbtn on" data-view="view-fefco_0201">Regular Slotted Case</button><button class="tbtn" data-view="view-fefco_0200">Half Slotted Container</button><button class="tbtn" data-view="view-tray_slit_corner">Slit Corner Tray</button><button class="tbtn" data-view="view-carton_seal_end">Seal End Carton</button><button class="tbtn" data-view="view-bag_pillow">Pillow Bag</button><button class="tbtn" data-view="view-bag_sup">Stand-Up Pouch</button><button class="tbtn" data-view="view-bag_gusseted">Side Gusseted Bag</button><button class="tbtn" data-view="view-proof_tapered_tray">Tapered tray (proof)</button></div>
   </header>
   <div class="banner">! Static preview — pre-rendered from the style catalogue at default parameters. The editor, live 3D and exports are not built yet.</div>
   <main>
@@ -1520,6 +1520,436 @@ main {
 <path d="M 27.46 69.78 L 27.46 109.82 L -39.09 136.09 L -39.09 96.05 Z" fill="var(--board)" fill-opacity="0.851" stroke="var(--board-edge)" stroke-width="0.696" stroke-linejoin="round"/>
 <path d="M -39.25 135.75 L -39.25 95.71 L 27.46 69.38 L 27.46 109.42 Z" fill="var(--board)" fill-opacity="0.851" stroke="var(--board-edge)" stroke-width="0.696" stroke-linejoin="round"/>
 <path d="M -8.38 123.77 L -39.25 135.95 L -39.25 95.71 L -8.38 83.52 Z" fill="var(--board)" fill-opacity="0.851" stroke="var(--board-edge)" stroke-width="0.696" stroke-linejoin="round"/>
+</svg>
+    </div>
+  </div>
+</section>
+<section class="view" id="view-bag_pillow">
+  <aside id="panel">
+    <div class="group">
+      <div class="eyebrow"><span class="n">01</span> Style</div>
+      <div class="field"><span class="label">Structure</span>
+        <select><option>Pillow Bag</option></select>
+        <div class="hint">Fin-seal VFFS bag. Front and back panels with a back fin and crimped end seals.</div>
+      </div>
+    </div>
+    <div class="group"><div class="eyebrow"><span class="n">02</span> Internal dimensions</div><div class="field"><span class="label">Bag width</span><div class="in"><input value="150" readonly><span class="unit">mm</span></div><div class="hint">Lay-flat width of the finished bag.</div></div><div class="field"><span class="label">Bag length</span><div class="in"><input value="240" readonly><span class="unit">mm</span></div><div class="hint">Cutoff length, including both end seal bands.</div></div></div><div class="group"><div class="eyebrow"><span class="n">03</span> Material</div><div class="field"><span class="label">Film gauge</span><div class="in"><input value="0.1" readonly><span class="unit">mm</span></div><div class="hint">Laminate thickness. 90 µm = 0.09 mm.</div></div></div><div class="group"><div class="eyebrow"><span class="n">04</span> Allowances</div><div class="field"><span class="label">Fin seal</span><div class="in"><input value="10" readonly><span class="unit">mm</span></div><div class="hint">Back seal strip, one per web edge.</div></div><div class="field"><span class="label">End seal</span><div class="in"><input value="12" readonly><span class="unit">mm</span></div><div class="hint">Crimp band at each end, inside the cutoff.</div></div></div>
+    <div class="group">
+      <div class="eyebrow"><span class="n">99</span> Unfolded geometry</div>
+      <div class="hint">Nothing — every line resolved into the fold graph.</div>
+    </div>
+    <div id="messages"></div>
+  </aside>
+
+  <div id="viewport">
+    <div id="pane-2d">
+      <div class="pane-grid"></div>
+      <span class="pane-label">Flat blank · mm</span>
+      <svg class="pane-canvas" viewBox="0 0 384 304" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10" fill="none" stroke="var(--l-dimension)" stroke-width="1.6"/>
+    </marker>
+  </defs>
+  <g transform="translate(32 272)">
+    <g transform="scale(1 -1)"><path d="M 0.00 12.00 L 0.00 0.00 L 10.00 0.00 L 10.00 12.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 310.00 12.00 L 310.00 0.00 L 320.00 0.00 L 320.00 12.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 0.00 240.00 L 0.00 228.00 L 10.00 228.00 L 10.00 240.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 310.00 240.00 L 310.00 228.00 L 320.00 228.00 L 320.00 240.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 10.00 12.00 L 10.00 0.00 L 85.00 0.00 L 85.00 12.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 235.00 12.00 L 235.00 0.00 L 310.00 0.00 L 310.00 12.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 10.00 240.00 L 10.00 228.00 L 85.00 228.00 L 85.00 240.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 235.00 240.00 L 235.00 228.00 L 310.00 228.00 L 310.00 240.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 85.00 12.00 L 85.00 0.00 L 235.00 0.00 L 235.00 12.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 85.00 240.00 L 85.00 228.00 L 235.00 228.00 L 235.00 240.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 0.00 228.00 L 0.00 12.00 L 10.00 12.00 L 10.00 228.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 310.00 228.00 L 310.00 12.00 L 320.00 12.00 L 320.00 228.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 10.00 228.00 L 10.00 12.00 L 85.00 12.00 L 85.00 228.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 235.00 228.00 L 235.00 12.00 L 310.00 12.00 L 310.00 228.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 85.00 228.00 L 85.00 12.00 L 235.00 12.00 L 235.00 228.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 0.00 0.00 L 0.00 12.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 10.00 0.00 L 10.00 12.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 85.00 0.00 L 85.00 12.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 235.00 0.00 L 235.00 12.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 310.00 0.00 L 310.00 12.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 320.00 0.00 L 320.00 12.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 0.00 12.00 L 0.00 228.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 10.00 12.00 L 10.00 228.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 85.00 12.00 L 85.00 228.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 235.00 12.00 L 235.00 228.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 310.00 12.00 L 310.00 228.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 320.00 12.00 L 320.00 228.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 0.00 228.00 L 0.00 240.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 10.00 228.00 L 10.00 240.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 85.00 228.00 L 85.00 240.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 235.00 228.00 L 235.00 240.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 310.00 228.00 L 310.00 240.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 320.00 228.00 L 320.00 240.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 0.00 0.00 L 10.00 0.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 0.00 12.00 L 10.00 12.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 0.00 228.00 L 10.00 228.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 0.00 240.00 L 10.00 240.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 10.00 0.00 L 85.00 0.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 10.00 12.00 L 85.00 12.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 10.00 228.00 L 85.00 228.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 10.00 240.00 L 85.00 240.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 85.00 0.00 L 235.00 0.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 85.00 12.00 L 235.00 12.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 85.00 228.00 L 235.00 228.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 85.00 240.00 L 235.00 240.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 235.00 0.00 L 310.00 0.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 235.00 12.00 L 310.00 12.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 235.00 228.00 L 310.00 228.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 235.00 240.00 L 310.00 240.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 310.00 0.00 L 320.00 0.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 310.00 12.00 L 320.00 12.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 310.00 228.00 L 320.00 228.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 310.00 240.00 L 320.00 240.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+    <g>
+      <line class="dim-ext" x1="0" y1="-1.6800000000000002" x2="0" y2="-14.000000000000002"/>
+      <line class="dim-ext" x1="320" y1="-1.6800000000000002" x2="320" y2="-14.000000000000002"/>
+      <line class="dimline" x1="0" y1="-11.200000000000001" x2="320" y2="-11.200000000000001" marker-start="url(#a)" marker-end="url(#a)"/>
+      <line class="dim-ext" x1="321.68" y1="0" x2="334" y2="0"/>
+      <line class="dim-ext" x1="321.68" y1="240" x2="334" y2="240"/>
+      <line class="dimline" x1="331.2" y1="0" x2="331.2" y2="240" marker-start="url(#a)" marker-end="url(#a)"/>
+    </g></g>
+    <text class="lbl" style="font-size:5.12px" x="47.5" y="-6.0">BACK LEFT END BOTTOM</text>
+<text class="lbl" style="font-size:5.12px" x="47.5" y="-234.0">BACK LEFT END TOP</text>
+<text class="lbl" style="font-size:5.12px" x="272.5" y="-234.0">BACK RIGHT END TOP</text>
+<text class="lbl" style="font-size:5.12px" x="160.0" y="-6.0">FRONT END BOTTOM</text>
+<text class="lbl" style="font-size:5.12px" x="160.0" y="-234.0">FRONT END TOP</text>
+<text class="lbl" style="font-size:5.12px" x="5.0" y="-120.0" transform="rotate(-90 5.0 -120.0)">FIN LEFT</text>
+<text class="lbl" style="font-size:5.12px" x="315.0" y="-120.0" transform="rotate(-90 315.0 -120.0)">FIN RIGHT</text>
+<text class="lbl" style="font-size:5.12px" x="47.5" y="-120.0">BACK PANEL LEFT</text>
+<text class="lbl" style="font-size:5.12px" x="272.5" y="-120.0">BACK PANEL RIGHT</text>
+<text class="lbl" style="font-size:5.12px" x="160.0" y="-120.0">FRONT PANEL</text>
+    <text class="dimtext" style="font-size:5.89px" x="160.0" y="18.3">320</text>
+    <text class="dimtext" style="font-size:5.89px" x="338.3" y="-120.0" transform="rotate(-90 338.3 -120.0)">240</text>
+  </g>
+</svg>
+      <span class="scalechip">Blank 320 × 240 mm</span>
+      <div class="titleblock">
+        <div class="tbhead"><span>Dieline Studio</span><span>BAG</span></div>
+        <div class="tbrow"><div class="k">Style</div><div class="v">Pillow Bag</div></div>
+        <div class="tbrow"><div class="k">Faces</div><div class="v"><b>15</b> · 22 hinges</div></div>
+        <div class="tbrow"><div class="k">Caliper</div><div class="v">0.1 mm</div></div>
+        <div class="tbrow"><div class="k">Blank</div><div class="v">320 × 240</div></div>
+        <div class="tbrow"><div class="k">Board</div><div class="v">76,800 mm²</div></div>
+        <div class="tbrow"><div class="k">Seals</div><div class="v">3</div></div>
+        <div class="tbrow"><div class="k">Scale</div><div class="v">1:1</div></div>
+      </div>
+    </div>
+    <div id="pane-3d">
+      <div class="pane-grid"></div>
+      <span class="pane-label">Folded · 100% · iso</span>
+      <svg class="pane-canvas" viewBox="-207.28660230891586 -7.714726464525924 337.35820599119154 187.47984918261153" preserveAspectRatio="xMidYMid meet">
+<path d="M -110.87 50.84 L -118.90 46.93 L -63.17 24.93 L -55.14 28.84 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.088" stroke-linejoin="round"/>
+<path d="M -110.87 59.83 L -118.90 55.92 L -118.90 46.93 L -110.87 50.84 Z" fill="var(--board)" fill-opacity="0.821" stroke="var(--board-edge)" stroke-width="1.088" stroke-linejoin="round"/>
+<path d="M -110.87 50.84 L -118.90 46.93 L -118.90 55.92 L -110.87 59.83 Z" fill="var(--board)" fill-opacity="0.821" stroke="var(--board-edge)" stroke-width="1.088" stroke-linejoin="round"/>
+<path d="M -55.14 28.84 L -63.17 24.93 L -174.64 68.93 L -166.61 72.84 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.088" stroke-linejoin="round"/>
+<path d="M -166.61 72.84 L -174.64 68.93 L -118.90 46.93 L -110.87 50.84 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.088" stroke-linejoin="round"/>
+<path d="M 33.66 121.21 L -110.87 50.84 L -55.14 28.84 L 89.39 99.21 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.088" stroke-linejoin="round"/>
+<path d="M 33.66 130.20 L -110.87 59.83 L -110.87 50.84 L 33.66 121.21 Z" fill="var(--board)" fill-opacity="0.821" stroke="var(--board-edge)" stroke-width="1.088" stroke-linejoin="round"/>
+<path d="M 33.66 121.21 L -110.87 50.84 L -110.87 59.83 L 33.66 130.20 Z" fill="var(--board)" fill-opacity="0.821" stroke="var(--board-edge)" stroke-width="1.088" stroke-linejoin="round"/>
+<path d="M 89.39 99.21 L -55.14 28.84 L -166.61 72.84 L -22.08 143.21 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.088" stroke-linejoin="round"/>
+<path d="M -22.08 143.21 L -166.61 72.84 L -110.87 50.84 L 33.66 121.21 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.088" stroke-linejoin="round"/>
+<path d="M 41.69 125.12 L 33.66 121.21 L 89.39 99.21 L 97.42 103.12 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.088" stroke-linejoin="round"/>
+<path d="M 41.69 134.11 L 33.66 130.20 L 33.66 121.21 L 41.69 125.12 Z" fill="var(--board)" fill-opacity="0.821" stroke="var(--board-edge)" stroke-width="1.088" stroke-linejoin="round"/>
+<path d="M 41.69 125.12 L 33.66 121.21 L 33.66 130.20 L 41.69 134.11 Z" fill="var(--board)" fill-opacity="0.821" stroke="var(--board-edge)" stroke-width="1.088" stroke-linejoin="round"/>
+<path d="M 97.42 103.12 L 89.39 99.21 L -22.08 143.21 L -14.05 147.12 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.088" stroke-linejoin="round"/>
+<path d="M -14.05 147.12 L -22.08 143.21 L 33.66 121.21 L 41.69 125.12 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.088" stroke-linejoin="round"/>
+</svg>
+    </div>
+  </div>
+</section>
+<section class="view" id="view-bag_sup">
+  <aside id="panel">
+    <div class="group">
+      <div class="eyebrow"><span class="n">01</span> Style</div>
+      <div class="field"><span class="label">Structure</span>
+        <select><option>Stand-Up Pouch</option></select>
+        <div class="hint">Doypack with a W-fold bottom gusset and a pinched, radiused side profile through the gusset.</div>
+      </div>
+    </div>
+    <div class="group"><div class="eyebrow"><span class="n">02</span> Internal dimensions</div><div class="field"><span class="label">Pouch width</span><div class="in"><input value="140" readonly><span class="unit">mm</span></div><div class="hint">Between the side seals.</div></div><div class="field"><span class="label">Panel height</span><div class="in"><input value="200" readonly><span class="unit">mm</span></div><div class="hint">Front and back panel height above the gusset.</div></div><div class="field"><span class="label">Gusset half-depth</span><div class="in"><input value="35" readonly><span class="unit">mm</span></div><div class="hint">Half the flat gusset; the blank carries 2G of gusset material.</div></div></div><div class="group"><div class="eyebrow"><span class="n">03</span> Material</div><div class="field"><span class="label">Film gauge</span><div class="in"><input value="0.1" readonly><span class="unit">mm</span></div></div></div><div class="group"><div class="eyebrow"><span class="n">04</span> Allowances</div><div class="field"><span class="label">Side seal</span><div class="in"><input value="10" readonly><span class="unit">mm</span></div><div class="hint">Sealed strip down each edge.</div></div><div class="field"><span class="label">Gusset pinch</span><div class="in"><input value="8" readonly><span class="unit">mm</span></div><div class="hint">How far each side curves in at the gusset. Bounded by the side seal.</div></div></div>
+    <div class="group">
+      <div class="eyebrow"><span class="n">99</span> Unfolded geometry</div>
+      <div class="hint">Nothing — every line resolved into the fold graph.</div>
+    </div>
+    <div id="messages"></div>
+  </aside>
+
+  <div id="viewport">
+    <div id="pane-2d">
+      <div class="pane-grid"></div>
+      <span class="pane-label">Flat blank · mm</span>
+      <svg class="pane-canvas" viewBox="0 0 254 564" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10" fill="none" stroke="var(--l-dimension)" stroke-width="1.6"/>
+    </marker>
+  </defs>
+  <g transform="translate(47 517)">
+    <g transform="scale(1 -1)"><path d="M 0.00 0.00 L 10.00 0.00 L 10.00 200.00 L 0.00 200.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 150.00 0.00 L 160.00 0.00 L 160.00 200.00 L 150.00 200.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 160.00 270.00 L 160.00 470.00 L 150.00 470.00 L 150.00 270.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 10.00 470.00 L 0.00 470.00 L 0.00 270.00 L 10.00 270.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 160.00 200.00 L 157.83 204.01 L 155.98 208.18 L 154.46 212.47 L 153.27 216.88 L 152.43 221.36 L 151.93 225.89 L 151.79 230.45 L 152.00 235.00 L 8.00 235.00 L 8.21 230.45 L 8.07 225.89 L 7.57 221.36 L 6.73 216.88 L 5.54 212.47 L 4.02 208.18 L 2.17 204.01 L 0.00 200.00 L 10.00 200.00 L 150.00 200.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 152.00 235.00 L 151.79 239.55 L 151.93 244.11 L 152.43 248.64 L 153.27 253.12 L 154.46 257.53 L 155.98 261.82 L 157.83 265.99 L 160.00 270.00 L 150.00 270.00 L 10.00 270.00 L 0.00 270.00 L 2.17 265.99 L 4.02 261.82 L 5.54 257.53 L 6.73 253.12 L 7.57 248.64 L 8.07 244.11 L 8.21 239.55 L 8.00 235.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 10.00 0.00 L 150.00 0.00 L 150.00 200.00 L 10.00 200.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 150.00 470.00 L 10.00 470.00 L 10.00 270.00 L 150.00 270.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 0.00 0.00 L 160.00 0.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 160.00 0.00 L 160.00 200.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 160.00 200.00 L 157.83 204.01 L 155.98 208.18 L 154.46 212.47 L 153.27 216.88 L 152.43 221.36 L 151.93 225.89 L 151.79 230.45 L 152.00 235.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 152.00 235.00 L 151.79 239.55 L 151.93 244.11 L 152.43 248.64 L 153.27 253.12 L 154.46 257.53 L 155.98 261.82 L 157.83 265.99 L 160.00 270.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 160.00 270.00 L 160.00 470.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 160.00 470.00 L 0.00 470.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 0.00 470.00 L 0.00 270.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 0.00 270.00 L 2.17 265.99 L 4.02 261.82 L 5.54 257.53 L 6.73 253.12 L 7.57 248.64 L 8.07 244.11 L 8.21 239.55 L 8.00 235.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 8.00 235.00 L 8.21 230.45 L 8.07 225.89 L 7.57 221.36 L 6.73 216.88 L 5.54 212.47 L 4.02 208.18 L 2.17 204.01 L 0.00 200.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 0.00 200.00 L 0.00 0.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 0.00 200.00 L 160.00 200.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 0.00 270.00 L 160.00 270.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 8.00 235.00 L 152.00 235.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 10.00 0.00 L 10.00 200.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 150.00 0.00 L 150.00 200.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 10.00 270.00 L 10.00 470.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 150.00 270.00 L 150.00 470.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+    <g>
+      <line class="dim-ext" x1="0" y1="-2.4675000000000002" x2="0" y2="-20.562500000000004"/>
+      <line class="dim-ext" x1="160" y1="-2.4675000000000002" x2="160" y2="-20.562500000000004"/>
+      <line class="dimline" x1="0" y1="-16.450000000000003" x2="160" y2="-16.450000000000003" marker-start="url(#a)" marker-end="url(#a)"/>
+      <line class="dim-ext" x1="162.4675" y1="0" x2="180.5625" y2="0"/>
+      <line class="dim-ext" x1="162.4675" y1="470" x2="180.5625" y2="470"/>
+      <line class="dimline" x1="176.45" y1="0" x2="176.45" y2="470" marker-start="url(#a)" marker-end="url(#a)"/>
+    </g></g>
+    <text class="lbl" style="font-size:7.52px" x="5.0" y="-100.0" transform="rotate(-90 5.0 -100.0)">FRONT SEAL LEFT</text>
+<text class="lbl" style="font-size:7.52px" x="155.0" y="-100.0" transform="rotate(-90 155.0 -100.0)">FRONT SEAL RIGHT</text>
+<text class="lbl" style="font-size:7.52px" x="155.0" y="-370.0" transform="rotate(-90 155.0 -370.0)">BACK SEAL RIGHT</text>
+<text class="lbl" style="font-size:7.52px" x="5.0" y="-370.0" transform="rotate(-90 5.0 -370.0)">BACK SEAL LEFT</text>
+<text class="lbl" style="font-size:7.52px" x="80.0" y="-217.2">GUSSET FRONT</text>
+<text class="lbl" style="font-size:7.52px" x="80.0" y="-252.8">GUSSET BACK</text>
+<text class="lbl" style="font-size:7.52px" x="80.0" y="-100.0">FRONT PANEL</text>
+<text class="lbl" style="font-size:7.52px" x="80.0" y="-370.0">BACK PANEL</text>
+    <text class="dimtext" style="font-size:8.65px" x="80.0" y="26.8">160</text>
+    <text class="dimtext" style="font-size:8.65px" x="186.8" y="-235.0" transform="rotate(-90 186.8 -235.0)">470</text>
+  </g>
+</svg>
+      <span class="scalechip">Blank 160 × 470 mm</span>
+      <div class="titleblock">
+        <div class="tbhead"><span>Dieline Studio</span><span>BAG</span></div>
+        <div class="tbrow"><div class="k">Style</div><div class="v">Stand-Up Pouch</div></div>
+        <div class="tbrow"><div class="k">Faces</div><div class="v"><b>8</b> · 11 hinges</div></div>
+        <div class="tbrow"><div class="k">Caliper</div><div class="v">0.1 mm</div></div>
+        <div class="tbrow"><div class="k">Blank</div><div class="v">160 × 470</div></div>
+        <div class="tbrow"><div class="k">Board</div><div class="v">74,375 mm²</div></div>
+        <div class="tbrow"><div class="k">Seals</div><div class="v">3</div></div>
+        <div class="tbrow"><div class="k">Scale</div><div class="v">1:1</div></div>
+      </div>
+    </div>
+    <div id="pane-3d">
+      <div class="pane-grid"></div>
+      <span class="pane-label">Folded · 100% · iso</span>
+      <svg class="pane-canvas" viewBox="-149.23068727816164 -30.32751520177863 313.38432375171186 172.74208848032856" preserveAspectRatio="xMidYMid meet">
+<path d="M 0.00 0.00 L -7.43 2.93 L 126.39 68.09 L 133.83 65.15 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.011" stroke-linejoin="round"/>
+<path d="M -7.43 2.93 L 0.00 -0.00 L 133.83 65.15 L 126.39 68.09 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.011" stroke-linejoin="round"/>
+<path d="M -7.43 2.93 L -111.47 44.00 L 22.35 109.15 L 126.39 68.09 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.011" stroke-linejoin="round"/>
+<path d="M -111.47 44.00 L -7.43 2.93 L 126.39 68.09 L 22.35 109.15 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.011" stroke-linejoin="round"/>
+<path d="M -111.47 44.00 L -118.90 46.93 L 14.92 112.09 L 22.35 109.15 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.011" stroke-linejoin="round"/>
+<path d="M 14.92 112.09 L -118.90 46.93 L -111.47 44.00 L 22.35 109.15 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.011" stroke-linejoin="round"/>
+<path d="M -2.55 98.34 L 0.65 99.76 L 3.60 101.29 L 6.26 102.91 L 8.63 104.62 L 10.70 106.40 L 12.44 108.24 L 13.85 110.14 L 14.92 112.09 L 22.35 109.15 L 126.39 68.09 L 133.83 65.15 L 129.53 64.48 L 125.37 63.67 L 121.36 62.72 L 117.53 61.63 L 113.91 60.42 L 110.51 59.09 L 107.35 57.64 L 104.46 56.10 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.011" stroke-linejoin="round"/>
+<path d="M 14.92 112.09 L 13.85 110.14 L 12.44 108.24 L 10.70 106.40 L 8.63 104.62 L 6.26 102.91 L 3.60 101.29 L 0.65 99.76 L -2.55 98.34 L 104.46 56.10 L 107.35 57.64 L 110.51 59.09 L 113.91 60.42 L 117.53 61.63 L 121.36 62.72 L 125.37 63.67 L 129.53 64.48 L 133.83 65.15 L 126.39 68.09 L 22.35 109.15 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.011" stroke-linejoin="round"/>
+</svg>
+    </div>
+  </div>
+</section>
+<section class="view" id="view-bag_gusseted">
+  <aside id="panel">
+    <div class="group">
+      <div class="eyebrow"><span class="n">01</span> Style</div>
+      <div class="field"><span class="label">Structure</span>
+        <select><option>Side Gusseted Bag</option></select>
+        <div class="hint">Fin-seal bag with a V-fold gusset in each side, forming a rectangular tube.</div>
+      </div>
+    </div>
+    <div class="group"><div class="eyebrow"><span class="n">02</span> Internal dimensions</div><div class="field"><span class="label">Bag width</span><div class="in"><input value="120" readonly><span class="unit">mm</span></div><div class="hint">Front panel width of the formed bag.</div></div><div class="field"><span class="label">Gusset depth</span><div class="in"><input value="70" readonly><span class="unit">mm</span></div><div class="hint">Formed front-to-back depth.</div></div><div class="field"><span class="label">Bag length</span><div class="in"><input value="300" readonly><span class="unit">mm</span></div><div class="hint">Cutoff length, including both end seal bands.</div></div></div><div class="group"><div class="eyebrow"><span class="n">03</span> Material</div><div class="field"><span class="label">Film gauge</span><div class="in"><input value="0.1" readonly><span class="unit">mm</span></div></div></div><div class="group"><div class="eyebrow"><span class="n">04</span> Allowances</div><div class="field"><span class="label">Fin seal</span><div class="in"><input value="10" readonly><span class="unit">mm</span></div></div><div class="field"><span class="label">End seal</span><div class="in"><input value="14" readonly><span class="unit">mm</span></div></div></div>
+    <div class="group">
+      <div class="eyebrow"><span class="n">99</span> Unfolded geometry</div>
+      <div class="hint">Nothing — every line resolved into the fold graph.</div>
+    </div>
+    <div id="messages"></div>
+  </aside>
+
+  <div id="viewport">
+    <div id="pane-2d">
+      <div class="pane-grid"></div>
+      <span class="pane-label">Flat blank · mm</span>
+      <svg class="pane-canvas" viewBox="0 0 480 380" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10" fill="none" stroke="var(--l-dimension)" stroke-width="1.6"/>
+    </marker>
+  </defs>
+  <g transform="translate(40 340)">
+    <g transform="scale(1 -1)"><path d="M 0.00 14.00 L 0.00 0.00 L 10.00 0.00 L 10.00 14.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 390.00 14.00 L 390.00 0.00 L 400.00 0.00 L 400.00 14.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 0.00 300.00 L 0.00 286.00 L 10.00 286.00 L 10.00 300.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 390.00 300.00 L 390.00 286.00 L 400.00 286.00 L 400.00 300.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 70.00 14.00 L 70.00 0.00 L 105.00 0.00 L 105.00 14.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 105.00 14.00 L 105.00 0.00 L 140.00 0.00 L 140.00 14.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 260.00 14.00 L 260.00 0.00 L 295.00 0.00 L 295.00 14.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 295.00 14.00 L 295.00 0.00 L 330.00 0.00 L 330.00 14.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 70.00 300.00 L 70.00 286.00 L 105.00 286.00 L 105.00 300.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 105.00 300.00 L 105.00 286.00 L 140.00 286.00 L 140.00 300.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 260.00 300.00 L 260.00 286.00 L 295.00 286.00 L 295.00 300.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 295.00 300.00 L 295.00 286.00 L 330.00 286.00 L 330.00 300.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 10.00 14.00 L 10.00 0.00 L 70.00 0.00 L 70.00 14.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 330.00 14.00 L 330.00 0.00 L 390.00 0.00 L 390.00 14.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 10.00 300.00 L 10.00 286.00 L 70.00 286.00 L 70.00 300.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 330.00 300.00 L 330.00 286.00 L 390.00 286.00 L 390.00 300.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 140.00 14.00 L 140.00 0.00 L 260.00 0.00 L 260.00 14.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 140.00 300.00 L 140.00 286.00 L 260.00 286.00 L 260.00 300.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 0.00 286.00 L 0.00 14.00 L 10.00 14.00 L 10.00 286.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 390.00 286.00 L 390.00 14.00 L 400.00 14.00 L 400.00 286.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 70.00 286.00 L 70.00 14.00 L 105.00 14.00 L 105.00 286.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 105.00 286.00 L 105.00 14.00 L 140.00 14.00 L 140.00 286.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 260.00 286.00 L 260.00 14.00 L 295.00 14.00 L 295.00 286.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 295.00 286.00 L 295.00 14.00 L 330.00 14.00 L 330.00 286.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 10.00 286.00 L 10.00 14.00 L 70.00 14.00 L 70.00 286.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 330.00 286.00 L 330.00 14.00 L 390.00 14.00 L 390.00 286.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 140.00 286.00 L 140.00 14.00 L 260.00 14.00 L 260.00 286.00 Z " fill-rule="evenodd" fill="var(--board-white)" opacity="0.85"/>
+<path d="M 0.00 0.00 L 0.00 14.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 10.00 0.00 L 10.00 14.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 70.00 0.00 L 70.00 14.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 105.00 0.00 L 105.00 14.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 140.00 0.00 L 140.00 14.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 260.00 0.00 L 260.00 14.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 295.00 0.00 L 295.00 14.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 330.00 0.00 L 330.00 14.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 390.00 0.00 L 390.00 14.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 400.00 0.00 L 400.00 14.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 0.00 14.00 L 0.00 286.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 10.00 14.00 L 10.00 286.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 70.00 14.00 L 70.00 286.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 105.00 14.00 L 105.00 286.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 140.00 14.00 L 140.00 286.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 260.00 14.00 L 260.00 286.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 295.00 14.00 L 295.00 286.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 330.00 14.00 L 330.00 286.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 390.00 14.00 L 390.00 286.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 400.00 14.00 L 400.00 286.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 0.00 286.00 L 0.00 300.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 10.00 286.00 L 10.00 300.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 70.00 286.00 L 70.00 300.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 105.00 286.00 L 105.00 300.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 140.00 286.00 L 140.00 300.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 260.00 286.00 L 260.00 300.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 295.00 286.00 L 295.00 300.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 330.00 286.00 L 330.00 300.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 390.00 286.00 L 390.00 300.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 400.00 286.00 L 400.00 300.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 0.00 0.00 L 10.00 0.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 0.00 14.00 L 10.00 14.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 0.00 286.00 L 10.00 286.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 0.00 300.00 L 10.00 300.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 10.00 0.00 L 70.00 0.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 10.00 14.00 L 70.00 14.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 10.00 286.00 L 70.00 286.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 10.00 300.00 L 70.00 300.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 70.00 0.00 L 105.00 0.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 70.00 14.00 L 105.00 14.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 70.00 286.00 L 105.00 286.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 70.00 300.00 L 105.00 300.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 105.00 0.00 L 140.00 0.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 105.00 14.00 L 140.00 14.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 105.00 286.00 L 140.00 286.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 105.00 300.00 L 140.00 300.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 140.00 0.00 L 260.00 0.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 140.00 14.00 L 260.00 14.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 140.00 286.00 L 260.00 286.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 140.00 300.00 L 260.00 300.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 260.00 0.00 L 295.00 0.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 260.00 14.00 L 295.00 14.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 260.00 286.00 L 295.00 286.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 260.00 300.00 L 295.00 300.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 295.00 0.00 L 330.00 0.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 295.00 14.00 L 330.00 14.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 295.00 286.00 L 330.00 286.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 295.00 300.00 L 330.00 300.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 330.00 0.00 L 390.00 0.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 330.00 14.00 L 390.00 14.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 330.00 286.00 L 390.00 286.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 330.00 300.00 L 390.00 300.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 390.00 0.00 L 400.00 0.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+<path d="M 390.00 14.00 L 400.00 14.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 390.00 286.00 L 400.00 286.00" fill="none" stroke="var(--l-crease)" stroke-width="1" stroke-dasharray="7 4"/>
+<path d="M 390.00 300.00 L 400.00 300.00" fill="none" stroke="var(--l-cut)" stroke-width="1.4"/>
+    <g>
+      <line class="dim-ext" x1="0" y1="-2.1" x2="0" y2="-17.500000000000004"/>
+      <line class="dim-ext" x1="400" y1="-2.1" x2="400" y2="-17.500000000000004"/>
+      <line class="dimline" x1="0" y1="-14.000000000000002" x2="400" y2="-14.000000000000002" marker-start="url(#a)" marker-end="url(#a)"/>
+      <line class="dim-ext" x1="402.1" y1="0" x2="417.5" y2="0"/>
+      <line class="dim-ext" x1="402.1" y1="300" x2="417.5" y2="300"/>
+      <line class="dimline" x1="414" y1="0" x2="414" y2="300" marker-start="url(#a)" marker-end="url(#a)"/>
+    </g></g>
+    <text class="lbl" style="font-size:6.40px" x="200.0" y="-7.0">FRONT END BOTTOM</text>
+<text class="lbl" style="font-size:6.40px" x="200.0" y="-293.0">FRONT END TOP</text>
+<text class="lbl" style="font-size:6.40px" x="5.0" y="-150.0" transform="rotate(-90 5.0 -150.0)">FIN LEFT</text>
+<text class="lbl" style="font-size:6.40px" x="395.0" y="-150.0" transform="rotate(-90 395.0 -150.0)">FIN RIGHT</text>
+<text class="lbl" style="font-size:6.40px" x="87.5" y="-150.0" transform="rotate(-90 87.5 -150.0)">GUSSET LEFT BACK</text>
+<text class="lbl" style="font-size:6.40px" x="122.5" y="-150.0" transform="rotate(-90 122.5 -150.0)">GUSSET LEFT FRONT</text>
+<text class="lbl" style="font-size:6.40px" x="277.5" y="-150.0" transform="rotate(-90 277.5 -150.0)">GUSSET RIGHT FRONT</text>
+<text class="lbl" style="font-size:6.40px" x="312.5" y="-150.0" transform="rotate(-90 312.5 -150.0)">GUSSET RIGHT BACK</text>
+<text class="lbl" style="font-size:6.40px" x="40.0" y="-150.0" transform="rotate(-90 40.0 -150.0)">BACK PANEL LEFT</text>
+<text class="lbl" style="font-size:6.40px" x="360.0" y="-150.0" transform="rotate(-90 360.0 -150.0)">BACK PANEL RIGHT</text>
+<text class="lbl" style="font-size:6.40px" x="200.0" y="-150.0">FRONT PANEL</text>
+    <text class="dimtext" style="font-size:7.36px" x="200.0" y="22.8">400</text>
+    <text class="dimtext" style="font-size:7.36px" x="422.8" y="-150.0" transform="rotate(-90 422.8 -150.0)">300</text>
+  </g>
+</svg>
+      <span class="scalechip">Blank 400 × 300 mm</span>
+      <div class="titleblock">
+        <div class="tbhead"><span>Dieline Studio</span><span>BAG</span></div>
+        <div class="tbrow"><div class="k">Style</div><div class="v">Side Gusseted Bag</div></div>
+        <div class="tbrow"><div class="k">Faces</div><div class="v"><b>27</b> · 42 hinges</div></div>
+        <div class="tbrow"><div class="k">Caliper</div><div class="v">0.1 mm</div></div>
+        <div class="tbrow"><div class="k">Blank</div><div class="v">400 × 300</div></div>
+        <div class="tbrow"><div class="k">Board</div><div class="v">120,000 mm²</div></div>
+        <div class="tbrow"><div class="k">Seals</div><div class="v">3</div></div>
+        <div class="tbrow"><div class="k">Scale</div><div class="v">1:1</div></div>
+      </div>
+    </div>
+    <div id="pane-3d">
+      <div class="pane-grid"></div>
+      <span class="pane-label">Folded · 100% · iso</span>
+      <svg class="pane-canvas" viewBox="-228.00764193991589 6.275869860775103 359.49653559653154 202.5112555953994" preserveAspectRatio="xMidYMid meet">
+<path d="M -94.67 45.63 L -104.04 41.07 L -130.05 51.33 L -120.68 55.89 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.160" stroke-linejoin="round"/>
+<path d="M -120.68 55.89 L -130.05 51.33 L -104.04 41.07 L -94.67 45.63 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.160" stroke-linejoin="round"/>
+<path d="M -139.26 63.23 L -148.63 58.67 L -104.04 41.07 L -94.67 45.63 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.160" stroke-linejoin="round"/>
+<path d="M -139.26 72.21 L -148.63 67.65 L -148.63 58.67 L -139.26 63.23 Z" fill="var(--board)" fill-opacity="0.821" stroke="var(--board-edge)" stroke-width="1.160" stroke-linejoin="round"/>
+<path d="M -139.26 63.23 L -148.63 58.67 L -148.63 67.65 L -139.26 72.21 Z" fill="var(--board)" fill-opacity="0.821" stroke="var(--board-edge)" stroke-width="1.160" stroke-linejoin="round"/>
+<path d="M -94.67 45.63 L -104.04 41.07 L -193.22 76.27 L -183.85 80.83 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.160" stroke-linejoin="round"/>
+<path d="M -183.85 80.83 L -193.22 76.27 L -148.63 58.67 L -139.26 63.23 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.160" stroke-linejoin="round"/>
+<path d="M -183.85 80.83 L -193.22 76.27 L -167.21 66.00 L -157.84 70.56 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.160" stroke-linejoin="round"/>
+<path d="M -157.84 70.56 L -167.21 66.00 L -193.22 76.27 L -183.85 80.83 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.160" stroke-linejoin="round"/>
+<path d="M 87.33 134.24 L -94.67 45.63 L -120.68 55.89 L 61.32 144.50 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.160" stroke-linejoin="round"/>
+<path d="M 61.32 144.50 L -120.68 55.89 L -94.67 45.63 L 87.33 134.24 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.160" stroke-linejoin="round"/>
+<path d="M 42.74 151.84 L -139.26 63.23 L -94.67 45.63 L 87.33 134.24 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.160" stroke-linejoin="round"/>
+<path d="M 42.74 160.82 L -139.26 72.21 L -139.26 63.23 L 42.74 151.84 Z" fill="var(--board)" fill-opacity="0.821" stroke="var(--board-edge)" stroke-width="1.160" stroke-linejoin="round"/>
+<path d="M 42.74 151.84 L -139.26 63.23 L -139.26 72.21 L 42.74 160.82 Z" fill="var(--board)" fill-opacity="0.821" stroke="var(--board-edge)" stroke-width="1.160" stroke-linejoin="round"/>
+<path d="M 87.33 134.24 L -94.67 45.63 L -183.85 80.83 L -1.85 169.44 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.160" stroke-linejoin="round"/>
+<path d="M -1.85 169.44 L -183.85 80.83 L -139.26 63.23 L 42.74 151.84 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.160" stroke-linejoin="round"/>
+<path d="M -1.85 169.44 L -183.85 80.83 L -157.84 70.56 L 24.16 159.17 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.160" stroke-linejoin="round"/>
+<path d="M 24.16 159.17 L -157.84 70.56 L -183.85 80.83 L -1.85 169.44 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.160" stroke-linejoin="round"/>
+<path d="M 96.70 138.80 L 87.33 134.24 L 61.32 144.50 L 70.69 149.06 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.160" stroke-linejoin="round"/>
+<path d="M 70.69 149.06 L 61.32 144.50 L 87.33 134.24 L 96.70 138.80 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.160" stroke-linejoin="round"/>
+<path d="M 52.11 156.40 L 42.74 151.84 L 87.33 134.24 L 96.70 138.80 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.160" stroke-linejoin="round"/>
+<path d="M 52.11 165.39 L 42.74 160.82 L 42.74 151.84 L 52.11 156.40 Z" fill="var(--board)" fill-opacity="0.821" stroke="var(--board-edge)" stroke-width="1.160" stroke-linejoin="round"/>
+<path d="M 52.11 156.40 L 42.74 151.84 L 42.74 160.82 L 52.11 165.39 Z" fill="var(--board)" fill-opacity="0.821" stroke="var(--board-edge)" stroke-width="1.160" stroke-linejoin="round"/>
+<path d="M 96.70 138.80 L 87.33 134.24 L -1.85 169.44 L 7.52 174.00 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.160" stroke-linejoin="round"/>
+<path d="M 7.52 174.00 L -1.85 169.44 L 42.74 151.84 L 52.11 156.40 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.160" stroke-linejoin="round"/>
+<path d="M 7.52 174.00 L -1.85 169.44 L 24.16 159.17 L 33.53 163.73 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.160" stroke-linejoin="round"/>
+<path d="M 33.53 163.73 L 24.16 159.17 L -1.85 169.44 L 7.52 174.00 Z" fill="var(--board)" fill-opacity="0.747" stroke="var(--board-edge)" stroke-width="1.160" stroke-linejoin="round"/>
 </svg>
     </div>
   </div>

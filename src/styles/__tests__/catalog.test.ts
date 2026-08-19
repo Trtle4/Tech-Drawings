@@ -4,6 +4,9 @@ import { sealEndCarton } from '../catalog/seal-end-carton.js';
 import { slitCornerTray } from '../catalog/slit-corner-tray.js';
 import { fefco0200 } from '../catalog/fefco0200.js';
 import { fefco0201 } from '../catalog/fefco0201.js';
+import { bagPillow } from '../catalog/bag-pillow.js';
+import { bagGusseted } from '../catalog/bag-gusseted.js';
+import { bagSup } from '../catalog/bag-sup.js';
 import { blankSize, materialArea, resolveGeometry } from '../../geometry/resolve.js';
 import { foldedFacePoints } from '../../geometry/fold.js';
 import type { GeometryGraph } from '../../geometry/types.js';
@@ -296,5 +299,109 @@ describe('the tray carries no unverified catalogue code', () => {
     // Same face count, entirely different structure.
     expect(tray.faces.map((f) => f.role).sort()).not.toEqual(hsc.faces.map((f) => f.role).sort());
     expect(materialArea(tray)).not.toBeCloseTo(materialArea(hsc), 0);
+  });
+});
+
+describe('bags', () => {
+  const pillow = compileStyle(bagPillow);
+  const gusseted = compileStyle(bagGusseted);
+  const sup = compileStyle(bagSup);
+
+  it('pillow: web is 2 fins plus 2 bag widths', () => {
+    const p = pillow.params;
+    expect(pillow.blank.width).toBeCloseTo(2 * p.finSeal! + 2 * p.bagW!, 6);
+    expect(pillow.blank.height).toBeCloseTo(p.bagL!, 6);
+  });
+
+  it('pillow: folds lay-flat to width x length x fin', () => {
+    const p = pillow.params;
+    const e = extents(pillow.graph);
+    // sorted ascending: fin, width, length
+    expect(e[0]).toBeCloseTo(p.finSeal!, 6);
+    expect(e[1]).toBeCloseTo(p.bagW!, 6);
+    expect(e[2]).toBeCloseTo(p.bagL!, 6);
+  });
+
+  it('gusseted: web adds two gusset depths to the pillow web', () => {
+    const g = gusseted.params;
+    expect(gusseted.blank.width).toBeCloseTo(2 * g.finSeal! + 2 * g.bagW! + 2 * g.bagD!, 6);
+  });
+
+  it('gusseted: still folds lay-flat, gussets tucked between the panels', () => {
+    const g = gusseted.params;
+    const e = extents(gusseted.graph);
+    expect(e[0]).toBeCloseTo(g.finSeal!, 6);
+    expect(e[1]).toBeCloseTo(g.bagW!, 6);
+    expect(e[2]).toBeCloseTo(g.bagL!, 6);
+  });
+
+  it('gusseted: loses no film — the blank is a full rectangle', () => {
+    const r = resolveGeometry(gusseted.graph);
+    expect(materialArea(r)).toBeCloseTo(gusseted.blank.width * gusseted.blank.height, 3);
+  });
+
+  it('SUP: is built without touching the grid', () => {
+    expect(bagSup.grid).toBeUndefined();
+    expect(bagSup.extraLines!.length).toBeGreaterThan(0);
+    expect(bagSup.extraSeeds).toHaveLength(8);
+  });
+
+  it('SUP: resolves front, back, two gusset halves and four seal strips', () => {
+    const r = resolveGeometry(sup.graph);
+    expect(r.faces.map((f) => f.role).sort()).toEqual([
+      'back_panel', 'back_seal_left', 'back_seal_right',
+      'front_panel', 'front_seal_left', 'front_seal_right',
+      'gusset_back', 'gusset_front',
+    ]);
+    expect(r.unresolved).toEqual([]);
+  });
+
+  it('SUP: the pinch is a real arc that removes film', () => {
+    const arcs = sup.graph.lines.filter((l) => l.geometry.kind === 'arc');
+    expect(arcs).toHaveLength(4);
+    const r = resolveGeometry(sup.graph);
+    // Two circular segments come out of the rectangle at the gusset.
+    const rect = sup.blank.width * sup.blank.height;
+    expect(materialArea(r)).toBeLessThan(rect);
+    const p = sup.params;
+    const segment = (2 / 3) * (2 * p.G!) * p.pinch!; // ≈ 2/3 · chord · sagitta
+    expect(rect - materialArea(r)).toBeGreaterThan(2 * segment * 0.9);
+    expect(rect - materialArea(r)).toBeLessThan(2 * segment * 1.15);
+  });
+
+  it('SUP: widening the pinch removes more film', () => {
+    const area = (pinch: number) =>
+      materialArea(resolveGeometry(compileStyle(bagSup, { params: { pinch } }).graph));
+    expect(area(2)).toBeGreaterThan(area(6));
+    expect(area(6)).toBeGreaterThan(area(9));
+  });
+
+  it('SUP: folds lay-flat, back exactly onto front', () => {
+    const p = sup.params;
+    const e = extents(sup.graph);
+    expect(e[0]).toBeCloseTo(0, 6); // no thickness — a bag has no rigid form
+    expect(e[1]).toBeCloseTo(p.W! + 2 * p.S!, 6);
+    expect(e[2]).toBeCloseTo(p.L!, 6);
+  });
+
+  it('SUP: keeps the pinch clear of the side seal', () => {
+    // Cutting past the seal would remove the seal itself.
+    const c = compileStyle(bagSup, { params: { pinch: 50, S: 10 } });
+    expect(c.params.pinch!).toBeLessThan(c.params.S!);
+    expect(c.warnings.join(' ')).toContain('clamped');
+  });
+
+  it('every bag stays parametric', () => {
+    for (const [def, params] of [
+      [bagPillow, { bagW: 90, bagL: 400, finSeal: 6, endSeal: 8 }],
+      [bagGusseted, { bagW: 200, bagD: 40, bagL: 180, finSeal: 12 }],
+      [bagSup, { W: 90, L: 300, G: 20, S: 8, pinch: 6 }],
+    ] as const) {
+      const c = compileStyle(def, { params });
+      expect(c.warnings, def.id).toEqual([]);
+      const r = resolveGeometry(c.graph);
+      expect(r.unresolved, def.id).toEqual([]);
+      expect(r.unreachableFaceIds, def.id).toEqual([]);
+    }
   });
 });
