@@ -102,6 +102,7 @@ export function detectFaces(
     holes: [],
     area: c.area,
     centroid: centroidOf(c.ring.points),
+    ply: 0,
   }));
 
   const cycleToFace = new Map<number, string>();
@@ -211,6 +212,7 @@ export function detectFaces(
     }
     hit.role = seed.role;
     if (seed.kind) hit.kind = seed.kind;
+    if (seed.ply !== undefined) hit.ply = seed.ply;
     const anchor = faceInteriorPoint(hit) ?? seed.point;
     healed.push({ ...seed, point: anchor });
   }

@@ -29,6 +29,9 @@ export const bagGusseted: StyleDefinition = {
   family: 'bag',
   description: 'Fin-seal bag with a V-fold gusset in each side, forming a rectangular tube.',
 
+  // Same reasoning as the pillow bag: vertical wrap creases leave y alone.
+  upAxis: 'y',
+
   params: [
     {
       id: 'bagW',

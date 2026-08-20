@@ -69,6 +69,9 @@ export const proofTaperedTray: StyleDefinition = {
   description:
     'Throwaway proof that a style can bypass the grid entirely: trapezoid faces, 62° folds, one arc edge.',
 
+  // Base lies flat; all four walls fold up out of its plane. 'z' is up.
+  upAxis: 'z',
+
   params: [
     { id: 'W', label: 'Base width', group: 'internal', unit: 'mm', default: 140, min: 20 },
     { id: 'D', label: 'Base depth', group: 'internal', unit: 'mm', default: 100, min: 20 },

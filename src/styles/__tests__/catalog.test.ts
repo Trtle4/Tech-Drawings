@@ -78,8 +78,91 @@ describe('every catalogue style', () => {
           expect(Number.isFinite(compiled.params[p.id])).toBe(true);
         }
       });
+
+      it('gives every face a finite integer ply', () => {
+        for (const f of resolved.faces) {
+          expect(Number.isInteger(f.ply), `${f.role}: ply ${f.ply}`).toBe(true);
+        }
+      });
+
+      it('declares a valid up axis, or none', () => {
+        expect(['x', 'y', 'z', undefined]).toContain(compiled.graph.upAxis);
+      });
     });
   }
+});
+
+describe('ply order — closure order for rendering, not for folding', () => {
+  const plyOf = (styleId: string, role: string) => {
+    const style = STYLES.find((s) => s.id === styleId)!;
+    const resolved = resolveGeometry(compileStyle(style).graph);
+    return resolved.faces.find((f) => f.role === role)!.ply;
+  };
+
+  it('RSC: minor flaps sit under major flaps, glue tab under its panel', () => {
+    expect(plyOf('fefco.0201', 'left_flap_top')).toBeLessThan(plyOf('fefco.0201', 'front_flap_top'));
+    expect(plyOf('fefco.0201', 'right_flap_bottom')).toBeLessThan(
+      plyOf('fefco.0201', 'back_flap_bottom'),
+    );
+    expect(plyOf('fefco.0201', 'glue_flap')).toBeLessThan(plyOf('fefco.0201', 'right_panel'));
+  });
+
+  it('HSC inherits the RSC’s ply assignment unchanged', () => {
+    expect(plyOf('fefco.0200', 'left_flap_bottom')).toBeLessThan(
+      plyOf('fefco.0200', 'front_flap_bottom'),
+    );
+    expect(plyOf('fefco.0200', 'glue_flap')).toBeLessThan(plyOf('fefco.0200', 'right_panel'));
+  });
+
+  it('seal end carton: minor flaps under major, glue tab under its panel', () => {
+    expect(plyOf('carton.seal_end', 'left_flap_top')).toBeLessThan(
+      plyOf('carton.seal_end', 'front_flap_top'),
+    );
+    expect(plyOf('carton.seal_end', 'glue_flap')).toBeLessThan(
+      plyOf('carton.seal_end', 'right_panel'),
+    );
+  });
+
+  it('slit corner tray: corner tabs sit under the walls', () => {
+    expect(plyOf('tray.slit_corner', 'corner_front_left')).toBeLessThan(
+      plyOf('tray.slit_corner', 'left_wall'),
+    );
+  });
+
+  it('ply is orthogonal to fold order — changing it never changes the geometry', () => {
+    const withPly = resolveGeometry(compileStyle(fefco0201).graph);
+    const noPly = resolveGeometry({
+      ...compileStyle(fefco0201).graph,
+      faceSeeds: compileStyle(fefco0201).graph.faceSeeds!.map((s) => ({ ...s, ply: 0 })),
+    });
+    expect(withPly.faces.map((f) => f.area).sort()).toEqual(noPly.faces.map((f) => f.area).sort());
+    expect(withPly.hinges.map((h) => h.angle)).toEqual(noPly.hinges.map((h) => h.angle));
+  });
+});
+
+describe('up axis — which world axis is up when displayed', () => {
+  const upOf = (styleId: string) => STYLES.find((s) => s.id === styleId)!.upAxis;
+
+  it('wrap-style cases, cartons and bags stand on the axis their wrap folds preserve', () => {
+    // Wrap hinges are vertical creases (column boundaries); rotating about a
+    // vertical axis leaves y untouched, so y is what is left standing.
+    for (const id of ['fefco.0201', 'fefco.0200', 'carton.seal_end', 'bag.pillow', 'bag.gusseted']) {
+      expect(upOf(id), id).toBe('y');
+    }
+  });
+
+  it('base-and-walls trays stand on the axis their walls fold away from', () => {
+    // The base is flat (identity) and every wall folds OUT of its plane, so
+    // there is no in-plane axis left untouched — up is the fold-out direction.
+    expect(upOf('tray.slit_corner')).toBe('z');
+  });
+
+  it('is carried from the style onto the compiled graph unchanged', () => {
+    for (const style of STYLES) {
+      if (!style.upAxis) continue;
+      expect(compileStyle(style).graph.upAxis).toBe(style.upAxis);
+    }
+  });
 });
 
 describe('seal end carton', () => {
@@ -170,9 +253,23 @@ describe('slit corner tray', () => {
     expect(resolved.foldTree!.closingHinges).toEqual([]);
   });
 
+  it('assigns corner tabs a lower ply than the walls, since they are never seen', () => {
+    for (const role of [
+      'corner_front_left',
+      'corner_front_right',
+      'corner_back_left',
+      'corner_back_right',
+    ]) {
+      expect(resolved.faces.find((f) => f.role === role)!.ply).toBe(-1);
+    }
+    for (const role of ['base', 'left_wall', 'right_wall', 'front_wall', 'back_wall']) {
+      expect(resolved.faces.find((f) => f.role === role)!.ply).toBe(0);
+    }
+  });
+
   it('slits the corner tabs free of the front and back walls', () => {
     // A corner tab hinges to its side wall only; the boundary with the
-    // front/back wall is a cut, so it is not a hinge.
+    // front/back wall is a punched slot, so it is not a hinge.
     const role = (id: string) => resolved.faces.find((f) => f.id === id)!.role;
     const partners = (tab: string) =>
       resolved.hinges
@@ -185,10 +282,18 @@ describe('slit corner tray', () => {
     expect(partners('corner_back_right')).toEqual(['right_wall']);
   });
 
-  it('keeps the slit corners as material, losing no board', () => {
-    // Slits remove nothing, so the board area is the whole rectangle.
-    expect(materialArea(resolved)).toBeCloseTo(450 * 370, 6);
+  it('loses exactly the corner slots worth of board, same treatment as the RSC', () => {
+    // Four slots, each caliper wide and wallH deep.
+    const lost = 4 * compiled.params.slot! * compiled.params.wallH!;
+    expect(materialArea(resolved)).toBeCloseTo(450 * 370 - lost, 6);
     expect(compiled.blank).toEqual({ width: 450, height: 370 });
+  });
+
+  it('still resolves with a zero-width corner slot, where tabs are only slit apart', () => {
+    const zero = compileStyle(slitCornerTray, { params: { slot: 0 } });
+    const r = resolveGeometry(zero.graph);
+    expect(r.faces).toHaveLength(9);
+    expect(materialArea(r)).toBeCloseTo(450 * 370, 6);
   });
 
   it('folds to the tray it was generated from', () => {
@@ -356,17 +461,32 @@ describe('bags', () => {
     expect(r.unresolved).toEqual([]);
   });
 
-  it('SUP: the pinch is a real arc that removes film', () => {
-    const arcs = sup.graph.lines.filter((l) => l.geometry.kind === 'arc');
-    expect(arcs).toHaveLength(4);
+  it('SUP: the pinch is straight, not an arc, and removes exactly two triangles', () => {
+    expect(sup.graph.lines.some((l) => l.geometry.kind === 'arc')).toBe(false);
     const r = resolveGeometry(sup.graph);
-    // Two circular segments come out of the rectangle at the gusset.
     const rect = sup.blank.width * sup.blank.height;
-    expect(materialArea(r)).toBeLessThan(rect);
     const p = sup.params;
-    const segment = (2 / 3) * (2 * p.G!) * p.pinch!; // ≈ 2/3 · chord · sagitta
-    expect(rect - materialArea(r)).toBeGreaterThan(2 * segment * 0.9);
-    expect(rect - materialArea(r)).toBeLessThan(2 * segment * 1.15);
+    // Each side chamfer is a triangle: base 2G (the gusset's full height), and
+    // depth `pinch`.
+    const triangle = 0.5 * (2 * p.G!) * p.pinch!;
+    expect(rect - materialArea(r)).toBeCloseTo(2 * triangle, 6);
+  });
+
+  it('SUP: puts the front panel on top of the 2D layout and back on the bottom', () => {
+    const r = resolveGeometry(sup.graph);
+    const front = r.faces.find((f) => f.role === 'front_panel')!;
+    const back = r.faces.find((f) => f.role === 'back_panel')!;
+    expect(front.centroid.y).toBeGreaterThan(back.centroid.y);
+    // The gusset half nearer each panel takes that panel's name.
+    const gf = r.faces.find((f) => f.role === 'gusset_front')!;
+    const gb = r.faces.find((f) => f.role === 'gusset_back')!;
+    expect(gf.centroid.y).toBeGreaterThan(gb.centroid.y);
+  });
+
+  it('SUP: front is visible from outside on lay-flat, so it outranks the back', () => {
+    const front = resolveGeometry(sup.graph).faces.find((f) => f.role === 'front_panel')!;
+    const back = resolveGeometry(sup.graph).faces.find((f) => f.role === 'back_panel')!;
+    expect(front.ply).toBeGreaterThan(back.ply);
   });
 
   it('SUP: widening the pinch removes more film', () => {

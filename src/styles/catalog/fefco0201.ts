@@ -11,6 +11,11 @@ import type { StyleDefinition } from '../schema.js';
  * vertical boundaries in the two flap rows are slots rather than creases —
  * everything else falls out of the default "crease between neighbours".
  *
+ * Flaps carry a ply: minor flaps (left/right, the W panels) close first and
+ * sit underneath; major flaps (front/back, the L panels) close second, on
+ * top, and are the ones taped — the flaps visible from outside. The glue flap
+ * is ply -1, laminated under the panel it laps, always hidden.
+ *
  *   columns   glue |  back(L)  |  left(W)  |  front(L)  |  right(W)
  *   rows      flap_top    (W/2)
  *             body        (H)
@@ -24,6 +29,11 @@ export const fefco0201: StyleDefinition = {
   code: '0201',
   description:
     'All flaps the same length; outer flaps meet at the centre. The most common shipping case.',
+
+  // The four body panels wrap around by folding about VERTICAL creases (the
+  // column boundaries), which leaves flat-pattern y untouched — the case
+  // height stands up along y with the wrap unchanged. 'y' is up.
+  upAxis: 'y',
 
   params: [
     {
@@ -94,23 +104,27 @@ export const fefco0201: StyleDefinition = {
       { id: 'flap_top', size: 'flap' },
     ],
     cells: [
-      // The glue flap exists only across the body row.
-      { row: 'body', col: 'glue', role: 'glue_flap', kind: 'seal' },
+      // The glue flap exists only across the body row. Laminated to the
+      // inside of the panel it laps, so it is always hidden behind it.
+      { row: 'body', col: 'glue', role: 'glue_flap', kind: 'seal', ply: -1 },
 
       { row: 'body', col: 'back', role: 'back_panel', kind: 'panel' },
       { row: 'body', col: 'left', role: 'left_panel', kind: 'panel' },
       { row: 'body', col: 'front', role: 'front_panel', kind: 'panel', base: true },
       { row: 'body', col: 'right', role: 'right_panel', kind: 'panel' },
 
-      { row: 'flap_bottom', col: 'back', role: 'back_flap_bottom', kind: 'flap' },
-      { row: 'flap_bottom', col: 'left', role: 'left_flap_bottom', kind: 'flap' },
-      { row: 'flap_bottom', col: 'front', role: 'front_flap_bottom', kind: 'flap' },
-      { row: 'flap_bottom', col: 'right', role: 'right_flap_bottom', kind: 'flap' },
+      // Minor flaps: attached to the W panels, close first, end up underneath.
+      { row: 'flap_bottom', col: 'left', role: 'left_flap_bottom', kind: 'flap', ply: 0 },
+      { row: 'flap_bottom', col: 'right', role: 'right_flap_bottom', kind: 'flap', ply: 0 },
+      { row: 'flap_top', col: 'left', role: 'left_flap_top', kind: 'flap', ply: 0 },
+      { row: 'flap_top', col: 'right', role: 'right_flap_top', kind: 'flap', ply: 0 },
 
-      { row: 'flap_top', col: 'back', role: 'back_flap_top', kind: 'flap' },
-      { row: 'flap_top', col: 'left', role: 'left_flap_top', kind: 'flap' },
-      { row: 'flap_top', col: 'front', role: 'front_flap_top', kind: 'flap' },
-      { row: 'flap_top', col: 'right', role: 'right_flap_top', kind: 'flap' },
+      // Major flaps: attached to the L panels, close second over the minors,
+      // and are the ones taped — the visible flaps from outside the case.
+      { row: 'flap_bottom', col: 'back', role: 'back_flap_bottom', kind: 'flap', ply: 1 },
+      { row: 'flap_bottom', col: 'front', role: 'front_flap_bottom', kind: 'flap', ply: 1 },
+      { row: 'flap_top', col: 'back', role: 'back_flap_top', kind: 'flap', ply: 1 },
+      { row: 'flap_top', col: 'front', role: 'front_flap_top', kind: 'flap', ply: 1 },
     ],
     boundaries: [
       // Flaps are separated by punched slots, not creases. Everything else

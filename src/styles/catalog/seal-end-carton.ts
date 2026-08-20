@@ -27,6 +27,10 @@ export const sealEndCarton: StyleDefinition = {
   description:
     'Glued-end folding carton. Minor flaps fold in first, major flaps seal over them.',
 
+  // Wrap folds are the vertical column creases, which leave flat-pattern y
+  // untouched. 'y' is up.
+  upAxis: 'y',
+
   params: [
     {
       id: 'L',
@@ -107,26 +111,29 @@ export const sealEndCarton: StyleDefinition = {
       { id: 'flap_top', size: 'majorFlap' },
     ],
     cells: [
-      { row: 'body', col: 'glue', role: 'glue_flap', kind: 'seal' },
+      { row: 'body', col: 'glue', role: 'glue_flap', kind: 'seal', ply: -1 },
       { row: 'body', col: 'back', role: 'back_panel', kind: 'panel' },
       { row: 'body', col: 'left', role: 'left_panel', kind: 'panel' },
       { row: 'body', col: 'front', role: 'front_panel', kind: 'panel', base: true },
       { row: 'body', col: 'right', role: 'right_panel', kind: 'panel' },
 
-      // Major flaps fill the flap row.
-      { row: 'flap_bottom', col: 'back', role: 'back_flap_bottom', kind: 'flap' },
-      { row: 'flap_bottom', col: 'front', role: 'front_flap_bottom', kind: 'flap' },
-      { row: 'flap_top', col: 'back', role: 'back_flap_top', kind: 'flap' },
-      { row: 'flap_top', col: 'front', role: 'front_flap_top', kind: 'flap' },
+      // Major flaps fill the flap row, close second, and seal over the
+      // minors — the ones visible and glued from outside.
+      { row: 'flap_bottom', col: 'back', role: 'back_flap_bottom', kind: 'flap', ply: 1 },
+      { row: 'flap_bottom', col: 'front', role: 'front_flap_bottom', kind: 'flap', ply: 1 },
+      { row: 'flap_top', col: 'back', role: 'back_flap_top', kind: 'flap', ply: 1 },
+      { row: 'flap_top', col: 'front', role: 'front_flap_top', kind: 'flap', ply: 1 },
 
       // Minor flaps share the row but stop short, inset from the free edge so
-      // the crease stays where the body panel expects it.
+      // the crease stays where the body panel expects it. Close first, sit
+      // underneath.
       {
         row: 'flap_bottom',
         col: 'left',
         role: 'left_flap_bottom',
         kind: 'flap',
         inset: { bottom: 'majorFlap - minorFlap' },
+        ply: 0,
       },
       {
         row: 'flap_bottom',
@@ -134,6 +141,7 @@ export const sealEndCarton: StyleDefinition = {
         role: 'right_flap_bottom',
         kind: 'flap',
         inset: { bottom: 'majorFlap - minorFlap' },
+        ply: 0,
       },
       {
         row: 'flap_top',
@@ -141,6 +149,7 @@ export const sealEndCarton: StyleDefinition = {
         role: 'left_flap_top',
         kind: 'flap',
         inset: { top: 'majorFlap - minorFlap' },
+        ply: 0,
       },
       {
         row: 'flap_top',
@@ -148,6 +157,7 @@ export const sealEndCarton: StyleDefinition = {
         role: 'right_flap_top',
         kind: 'flap',
         inset: { top: 'majorFlap - minorFlap' },
+        ply: 0,
       },
     ],
     boundaries: [{ axis: 'v', within: ['flap_bottom', 'flap_top'], kind: 'slot', width: 'slot' }],

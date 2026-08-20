@@ -84,6 +84,13 @@ export interface CellSpec {
    * moves in.
    */
   inset?: { top?: Expr; bottom?: Expr; left?: Expr; right?: Expr };
+  /**
+   * Closure order for rendering — which of two overlapping faces draws on top.
+   * Higher wins. A minor flap that closes before a major flap is a lower ply
+   * than the major; a glue tab laminated under its panel is lower still.
+   * Defaults to 0. Never affects folding, only paint order.
+   */
+  ply?: number;
 }
 
 /**
@@ -183,6 +190,8 @@ export interface ExtraSeedSpec {
   role: string;
   point: { x: Expr; y: Expr };
   kind?: FaceKind;
+  /** See `CellSpec.ply`. */
+  ply?: number;
   presentIf?: Expr;
 }
 
@@ -271,6 +280,13 @@ export interface StyleDefinition {
   formedShape?: FormedShapeSpec;
   /** Falls back to the grid cell marked `base`, then to the largest face. */
   baseFaceRole?: string;
+  /**
+   * Which world axis is up when displaying the folded or formed result. See
+   * `GeometryGraph.upAxis` for the full explanation. Defaults to 'y', which is
+   * correct for every wrap-style case, carton and bag in the catalogue; a tray
+   * or another base-and-walls style wants 'z'.
+   */
+  upAxis?: 'x' | 'y' | 'z';
 }
 
 // ---------------------------------------------------------------------------

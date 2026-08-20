@@ -5,7 +5,6 @@ import {
   proofTaperedTray,
   fefco0201,
   slitCornerTray,
-  bagSup,
 } from '../../styles/index.js';
 import { blankSize, materialArea, resolveGeometry } from '../../geometry/resolve.js';
 import { DXF_LAYERS, buildDxf } from '../dxf.js';
@@ -156,14 +155,17 @@ describe('face-level round trip', () => {
 });
 
 describe('arcs export as true arcs', () => {
-  it('the SUP pinch is four ARC entities, not chords', () => {
-    const { graph } = compileStyle(bagSup);
+  // The SUP's pinch is a straight chamfer now (see bag-sup.ts) — the tapered
+  // tray proof style is the arc-bearing case (its lip), and stays in the
+  // catalogue/proof set specifically to exercise this.
+  it('the tapered tray lip is a true ARC entity, not a chord', () => {
+    const { graph } = compileStyle(proofTaperedTray);
     const resolved = resolveGeometry(graph);
     const { doc, report } = roundTrip(graph, resolved);
 
-    expect(report.arcs).toBe(4);
+    expect(report.arcs).toBe(1);
     expect(report.chordApproximated).toEqual([]);
-    expect(doc.entities.filter((e) => e.kind === 'ARC')).toHaveLength(4);
+    expect(doc.entities.filter((e) => e.kind === 'ARC')).toHaveLength(1);
 
     // No multi-point polyline on a structural layer — that would be a
     // flattened curve sneaking through.
@@ -173,22 +175,24 @@ describe('arcs export as true arcs', () => {
     expect(flattened).toEqual([]);
   });
 
-  it('keeps the arc geometry exactly, radius and centre', () => {
-    const { graph } = compileStyle(bagSup);
-    const resolved = resolveGeometry(graph);
-    const { doc } = roundTrip(graph, resolved);
-    const fileArcs = doc.entities.filter((e) => e.kind === 'ARC');
+  it('keeps every style’s arc geometry exactly, radius and centre', () => {
+    for (const def of ALL) {
+      const { graph } = compileStyle(def);
+      const resolved = resolveGeometry(graph);
+      const { doc } = roundTrip(graph, resolved);
+      const fileArcs = doc.entities.filter((e) => e.kind === 'ARC');
 
-    for (const line of graph.lines) {
-      const g = line.geometry;
-      if (g.kind !== 'arc') continue;
-      const match = fileArcs.find(
-        (f) =>
-          Math.abs(f.center!.x - g.center.x) < 1e-9 &&
-          Math.abs(f.center!.y - g.center.y) < 1e-9 &&
-          Math.abs(f.radius! - g.radius) < 1e-9,
-      );
-      expect(match, `no ARC for ${line.role}`).toBeDefined();
+      for (const line of graph.lines) {
+        const g = line.geometry;
+        if (g.kind !== 'arc') continue;
+        const match = fileArcs.find(
+          (f) =>
+            Math.abs(f.center!.x - g.center.x) < 1e-9 &&
+            Math.abs(f.center!.y - g.center.y) < 1e-9 &&
+            Math.abs(f.radius! - g.radius) < 1e-9,
+        );
+        expect(match, `${def.id}: no ARC for ${line.role}`).toBeDefined();
+      }
     }
   });
 
@@ -238,8 +242,9 @@ describe('slits and zero-width slots survive', () => {
     const model = resolveGeometry(graph);
     const { doc, back } = roundTrip(graph, model);
 
-    // The slits are cuts that remove nothing, so they are pruned from the
-    // material boundary but must still reach the knife.
+    // The corner cuts are a real punched slot now (matching the RSC's flap
+    // slots), each wall of which is pruned from the material boundary as its
+    // own cut but must still reach the knife.
     const cuts = doc.entities.filter((e) => e.layer === 'CUT');
     expect(cuts.length).toBeGreaterThanOrEqual(16);
 

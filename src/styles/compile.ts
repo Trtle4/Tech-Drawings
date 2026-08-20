@@ -112,6 +112,7 @@ export function compileStyle(def: StyleDefinition, opts: CompileOptions = {}): C
       role: spec.role,
       point: { x: evalExpr(spec.point.x, scope), y: evalExpr(spec.point.y, scope) },
       ...(spec.kind ? { kind: spec.kind } : {}),
+      ...(spec.ply !== undefined ? { ply: spec.ply } : {}),
     });
   }
 
@@ -165,6 +166,7 @@ export function compileStyle(def: StyleDefinition, opts: CompileOptions = {}): C
     hingeAngles,
     ...(def.formedShape ? { formedShape: def.formedShape } : {}),
     ...(baseRole ? { baseFaceRole: baseRole } : {}),
+    ...(def.upAxis ? { upAxis: def.upAxis } : {}),
     meta: { styleId: def.id, styleName: def.name, standard: def.standard, code: def.code, params },
   };
 
@@ -548,6 +550,7 @@ function emitGrid(
         role: cell.role,
         kind: cell.kind,
         point: { x: (cell.x0 + cell.x1) / 2, y: (cell.y0 + cell.y1) / 2 },
+        ...(cell.ply !== undefined ? { ply: cell.ply } : {}),
       });
     }
   }

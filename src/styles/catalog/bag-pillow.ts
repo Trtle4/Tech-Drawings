@@ -31,6 +31,10 @@ export const bagPillow: StyleDefinition = {
   family: 'bag',
   description: 'Fin-seal VFFS bag. Front and back panels with a back fin and crimped end seals.',
 
+  // Wrap folds are the vertical column creases, which leave flat-pattern y
+  // untouched — a standing bag's length is up, same as a wrap-style case.
+  upAxis: 'y',
+
   params: [
     {
       id: 'bagW',

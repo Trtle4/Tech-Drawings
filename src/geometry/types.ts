@@ -146,6 +146,15 @@ export interface FaceSeed {
   role: string;
   point: Vec2;
   kind?: FaceKind;
+  /**
+   * Closure/stacking order for rendering, not for folding. When two faces
+   * overlap in the folded or formed view — a flap over a flap, a glue tab
+   * under its panel — the one with the higher ply draws on top. Independent
+   * of fold order in the tree; a style sets it to describe physical assembly
+   * (minor flaps close before major flaps, a glue tab is laminated under the
+   * panel it laps). Defaults to 0, meaning "no opinion, sits with the rest."
+   */
+  ply?: number;
 }
 
 /**
@@ -178,6 +187,19 @@ export interface GeometryGraph {
   hingeAngles?: Record<string, number>;
   /** Role of the face to keep fixed when folding. Defaults to the largest face. */
   baseFaceRole?: string;
+  /**
+   * Which world axis is "up" when the folded or formed result is displayed,
+   * so a case stands with flaps at top and bottom rather than on the sides and
+   * a bag stands on its seal rather than lying on its face. The base face is
+   * never transformed (identity), so its own flat x and y axes ARE world x and
+   * y at that point — 'x' or 'y' means "world up is the base face's own flat
+   * x/y axis"; 'z' means "world up is the direction faces fold away from the
+   * base", which is what a tray or tapered tray wants (walls rise off a flat
+   * bottom) and 'x'/'y' is what a wrap-style case, carton or bag wants (the
+   * panel row that never rotates out of plane through the wrap folds is the
+   * one left standing up). Defaults to 'y'.
+   */
+  upAxis?: 'x' | 'y' | 'z';
   meta?: Record<string, unknown>;
 }
 
@@ -211,6 +233,8 @@ export interface Face {
   /** Outer area minus hole areas, mm². */
   area: number;
   centroid: Vec2;
+  /** Stacking order for rendering. See `FaceSeed.ply`. Defaults to 0. */
+  ply: number;
 }
 
 /**

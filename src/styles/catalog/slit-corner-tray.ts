@@ -5,8 +5,10 @@ import type { StyleDefinition } from '../schema.js';
  *
  * Rectangular base, four walls folded up, and a corner tab at each corner that
  * stays attached to the end wall and folds in behind the side wall. The corners
- * are slit, not slotted: a knife cut with board on both sides, removing
- * nothing.
+ * are cut on a real gap the width of the board, the same treatment as the RSC's
+ * flap slots — not a zero-width slit. Named for the ORIGINAL detail (a bare
+ * cut with board touching both sides); kept as `tray.slit_corner` rather than
+ * renamed, since the topology and the id are unchanged, only the gap width.
  *
  *   columns   wall_left(wallH) | base(L) | wall_right(wallH)
  *   rows      wall_back  (wallH)
@@ -14,12 +16,15 @@ import type { StyleDefinition } from '../schema.js';
  *             wall_front (wallH)
  *
  * The only override the grid needs is that the vertical boundaries in the front
- * and back rows are cuts rather than creases. That frees each corner tab from
- * the front/back wall while leaving it hinged to the left/right wall.
+ * and back rows are slots, `caliper` wide, rather than creases. That frees each
+ * corner tab from the front/back wall while leaving it hinged to the left/right
+ * wall, and gives the knife a real gap to cut rather than a coincident line.
  *
- * Those corner slits are exactly the locking-tab case: an open cut chain that
- * terminates on a crease. They classify correctly only because material is
- * decided by whether cuts close, not by whether a chain is open.
+ * A zero-width slot is exactly the locking-tab case: an open cut chain that
+ * terminates on a crease. It classified correctly before this change too,
+ * because material is decided by whether cuts close, not by whether a chain is
+ * open — the slot width only changes how much board the knife removes, not
+ * whether the topology resolves.
  *
  * CATALOGUE CODE: deliberately unassigned.
  *
@@ -46,6 +51,11 @@ export const slitCornerTray: StyleDefinition = {
   family: 'tray',
   description:
     'One-piece tray with slit corners; each corner tab folds in behind the adjacent wall.',
+
+  // The base lies flat (identity transform) and every wall folds UP out of
+  // its plane. 'z' is up — unlike a wrap-style case, there is no panel row
+  // left untouched by a fold to stand up along.
+  upAxis: 'z',
 
   params: [
     {
@@ -90,6 +100,16 @@ export const slitCornerTray: StyleDefinition = {
       step: 1,
       hint: 'Under 90° gives a splayed, stackable tray. Corner tabs assume 90°.',
     },
+    {
+      id: 'slot',
+      label: 'Corner slot width',
+      group: 'allowance',
+      unit: 'mm',
+      default: 'caliper',
+      min: 0,
+      step: 0.5,
+      hint: 'Same treatment as the RSC flap slots.',
+    },
   ],
 
   grid: {
@@ -111,19 +131,22 @@ export const slitCornerTray: StyleDefinition = {
       { row: 'wall_front', col: 'base', role: 'front_wall', kind: 'panel' },
       { row: 'wall_back', col: 'base', role: 'back_wall', kind: 'panel' },
 
-      // Corner tabs stay hinged to the left/right walls above and below them.
-      { row: 'wall_front', col: 'wall_left', role: 'corner_front_left', kind: 'flap' },
-      { row: 'wall_front', col: 'wall_right', role: 'corner_front_right', kind: 'flap' },
-      { row: 'wall_back', col: 'wall_left', role: 'corner_back_left', kind: 'flap' },
-      { row: 'wall_back', col: 'wall_right', role: 'corner_back_right', kind: 'flap' },
+      // Corner tabs stay hinged to the left/right walls above and below them,
+      // fold to the inside, and are never seen from outside the tray.
+      { row: 'wall_front', col: 'wall_left', role: 'corner_front_left', kind: 'flap', ply: -1 },
+      { row: 'wall_front', col: 'wall_right', role: 'corner_front_right', kind: 'flap', ply: -1 },
+      { row: 'wall_back', col: 'wall_left', role: 'corner_back_left', kind: 'flap', ply: -1 },
+      { row: 'wall_back', col: 'wall_right', role: 'corner_back_right', kind: 'flap', ply: -1 },
     ],
     boundaries: [
       // Every wall folds up by the same angle.
       { axis: 'v', within: ['base'], kind: 'crease', angle: 'wallAngle' },
       { axis: 'h', within: ['base'], kind: 'crease', angle: 'wallAngle' },
-      // The corner tabs are slit free of the front and back walls, and stay
-      // creased to the side walls at a right angle so they tuck in flat.
-      { axis: 'v', within: ['wall_front', 'wall_back'], kind: 'cut' },
+      // The corner tabs are freed from the front and back walls by a real
+      // punched slot, caliper wide — the same treatment as the RSC's flap
+      // slots — and stay creased to the side walls at a right angle so they
+      // tuck in flat behind them.
+      { axis: 'v', within: ['wall_front', 'wall_back'], kind: 'slot', width: 'slot' },
     ],
   },
 
