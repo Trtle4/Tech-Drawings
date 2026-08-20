@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { graph, rect, seg } from '../../geometry/build.js';
 import { resolveGeometry } from '../../geometry/resolve.js';
 import type { OverrideOp } from '../overrides.js';
-import { applyOverrides } from '../overrides.js';
+import { applyOverrides, describeStaleOp, isLineOverridden } from '../overrides.js';
 
 function base() {
   return graph([
@@ -164,5 +164,92 @@ describe('set_hinge_angle feeds resolveGeometry\'s existing override layer', () 
       { kind: 'set_hinge_angle', faceA: hinge.faceA, faceB: hinge.faceB, angleRad: 0.5 },
     ]);
     expect(g.lines).toHaveLength(b.lines.length);
+  });
+});
+
+describe('staleOps — a line-targeting op whose target is gone is reported, not swallowed', () => {
+  it('delete_line of a missing id is stale', () => {
+    const b = base();
+    const { staleOps } = applyOverrides(b, [{ kind: 'delete_line', lineId: 'ghost' }]);
+    expect(staleOps).toEqual([{ kind: 'delete_line', lineId: 'ghost' }]);
+  });
+
+  it('set_line_type of a missing id is stale', () => {
+    const b = base();
+    const { staleOps } = applyOverrides(b, [{ kind: 'set_line_type', lineId: 'ghost', type: 'perf' }]);
+    expect(staleOps).toHaveLength(1);
+  });
+
+  it('move_point of a missing id, or an out-of-range index, is stale', () => {
+    const b = base();
+    const real = b.lines[0]!.id;
+    const { staleOps: s1 } = applyOverrides(b, [{ kind: 'move_point', lineId: 'ghost', pointIndex: 0, to: { x: 0, y: 0 } }]);
+    expect(s1).toHaveLength(1);
+    const { staleOps: s2 } = applyOverrides(b, [{ kind: 'move_point', lineId: real, pointIndex: 99, to: { x: 0, y: 0 } }]);
+    expect(s2).toHaveLength(1);
+  });
+
+  it('move_line of a missing id is stale', () => {
+    const b = base();
+    const { staleOps } = applyOverrides(b, [{ kind: 'move_line', lineId: 'ghost', dx: 1, dy: 1 }]);
+    expect(staleOps).toHaveLength(1);
+  });
+
+  it('add_line and set_hinge_angle are never reported stale by applyOverrides itself', () => {
+    const b = base();
+    const { staleOps } = applyOverrides(b, [
+      { kind: 'add_line', id: 'new.1', type: 'cut', role: 'user.1', points: [{ x: 0, y: 0 }, { x: 1, y: 1 }] },
+      { kind: 'set_hinge_angle', faceA: 'x', faceB: 'y', angleRad: 1 },
+    ]);
+    expect(staleOps).toEqual([]);
+  });
+
+  it('a valid op targeting a real line is never reported stale', () => {
+    const b = base();
+    const real = b.lines[0]!.id;
+    const { staleOps } = applyOverrides(b, [{ kind: 'set_line_type', lineId: real, type: 'perf' }]);
+    expect(staleOps).toEqual([]);
+  });
+});
+
+describe('isLineOverridden', () => {
+  it('is true for a user-sourced line regardless of ops', () => {
+    const line = seg('cut', 'a', { x: 0, y: 0 }, { x: 1, y: 1 }, 'user');
+    expect(isLineOverridden(line, [])).toBe(true);
+  });
+
+  it('is true for a template line an op targets by id', () => {
+    const line = seg('cut', 'a', { x: 0, y: 0 }, { x: 1, y: 1 }, 'style.test');
+    expect(isLineOverridden(line, [{ kind: 'set_line_type', lineId: line.id, type: 'perf' }])).toBe(true);
+  });
+
+  it('is false for a template line no op mentions', () => {
+    const line = seg('cut', 'a', { x: 0, y: 0 }, { x: 1, y: 1 }, 'style.test');
+    expect(isLineOverridden(line, [{ kind: 'set_line_type', lineId: 'someone.else', type: 'perf' }])).toBe(false);
+  });
+
+  it('add_line and set_hinge_angle ops never mark an unrelated template line as overridden', () => {
+    const line = seg('cut', 'a', { x: 0, y: 0 }, { x: 1, y: 1 }, 'style.test');
+    const ops: OverrideOp[] = [
+      { kind: 'add_line', id: line.id, type: 'cut', role: 'x', points: [{ x: 0, y: 0 }, { x: 1, y: 1 }] },
+      { kind: 'set_hinge_angle', faceA: 'x', faceB: 'y', angleRad: 1 },
+    ];
+    expect(isLineOverridden(line, ops)).toBe(false);
+  });
+});
+
+describe('describeStaleOp', () => {
+  it('produces a distinct, non-empty message for every op kind', () => {
+    const ops: OverrideOp[] = [
+      { kind: 'delete_line', lineId: 'x' },
+      { kind: 'set_line_type', lineId: 'x', type: 'perf' },
+      { kind: 'move_point', lineId: 'x', pointIndex: 0, to: { x: 0, y: 0 } },
+      { kind: 'move_line', lineId: 'x', dx: 1, dy: 1 },
+      { kind: 'add_line', id: 'x', type: 'cut', role: 'x', points: [{ x: 0, y: 0 }, { x: 1, y: 1 }] },
+      { kind: 'set_hinge_angle', faceA: 'a', faceB: 'b', angleRad: 1 },
+    ];
+    const messages = ops.map(describeStaleOp);
+    for (const m of messages) expect(m.length).toBeGreaterThan(0);
+    expect(new Set(messages).size).toBe(messages.length);
   });
 });

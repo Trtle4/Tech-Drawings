@@ -16,7 +16,7 @@
  */
 import type { DrawingLine, LineType, Path, Vec2 } from '../geometry/types.js';
 import { flattenPath } from '../geometry/arrangement.js';
-import { translatePath } from './overrides.js';
+import { isLineOverridden, translatePath } from './overrides.js';
 import { hitTestEndpoint, hitTestFace, hitTestLine } from './hitTest.js';
 import {
   collectSnapCandidates,
@@ -382,6 +382,19 @@ export function mountCanvas(container: HTMLElement, store: Store): CanvasControl
       })
       .join('');
 
+    // A small warning-coloured dot at an overridden line's midpoint — distinct
+    // from the accent selection halo, and persistent whether or not the line
+    // is currently selected, so a hand edit stays visible at a glance.
+    const overrideBadgeLayer = derived.graph.lines
+      .map((l) => {
+        if (!isLineOverridden(l, store.getState().ops)) return '';
+        const pts = flattenPath(effectivePath(l, drag));
+        if (pts.length === 0) return '';
+        const mid = toScreen(pts[Math.floor((pts.length - 1) / 2)]!);
+        return `<circle cx="${mid.x.toFixed(2)}" cy="${mid.y.toFixed(2)}" r="3.5" fill="var(--warn)" stroke="var(--panel)" stroke-width="1" class="override-badge"/>`;
+      })
+      .join('');
+
     const handleLayer = derived.graph.lines
       .flatMap((l) => {
         if (l.geometry.kind !== 'polyline') return [];
@@ -411,7 +424,7 @@ export function mountCanvas(container: HTMLElement, store: Store): CanvasControl
       }
     }
 
-    svg.innerHTML = `${gridLayer}<g>${faceLayer}</g><g>${lineLayer}</g><g>${handleLayer}</g><g>${overlay}</g>`;
+    svg.innerHTML = `${gridLayer}<g>${faceLayer}</g><g>${lineLayer}</g><g>${overrideBadgeLayer}</g><g>${handleLayer}</g><g>${overlay}</g>`;
   }
 
   function renderGrid(cam: Camera2D, vp: Viewport): string {

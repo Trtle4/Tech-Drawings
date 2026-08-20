@@ -82,10 +82,14 @@ export function mountPanel(container: HTMLElement, store: Store): PanelControlle
       .join('');
 
     const unresolved = derived.resolved.unresolved;
+    const stale = derived.staleOverrides;
     const unfoldedHtml =
-      unresolved.length === 0
-        ? `<div class="hint">Nothing — every line resolved into the fold graph.</div>`
-        : `<ul class="unfolded-list">${unresolved.map((u) => `<li><span class="reason">${u.reason.replace(/_/g, ' ')}</span><span>${esc(u.message)}</span></li>`).join('')}</ul>`;
+      unresolved.length === 0 && stale.length === 0
+        ? `<div class="hint">Nothing — every line resolved into the fold graph, and every edit still applies.</div>`
+        : `<ul class="unfolded-list">
+            ${unresolved.map((u) => `<li><span class="reason">${u.reason.replace(/_/g, ' ')}</span><span>${esc(u.message)}</span></li>`).join('')}
+            ${stale.map((s) => `<li><span class="reason">stale override</span><span>${esc(s.message)}</span></li>`).join('')}
+          </ul>`;
 
     const warningsHtml = derived.warnings.map((w) => `<div class="msg warning">${esc(w)}</div>`).join('');
 

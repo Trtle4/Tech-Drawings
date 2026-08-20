@@ -8,6 +8,7 @@
  * v1 lets a user free-edit; role is a name, not a value.
  */
 import type { LineType } from '../geometry/types.js';
+import { isLineOverridden } from './overrides.js';
 import type { Store } from './state.js';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -54,6 +55,14 @@ export function mountInspector(container: HTMLElement, store: Store): InspectorC
           </div>`
         : row('Hinge angle', '—');
 
+      const overridden = isLineOverridden(line, state.ops);
+      const overrideRow = overridden
+        ? `<div class="field">
+            <span class="label" style="color:var(--warn)">● Overridden</span>
+            <div class="hint">${line.sourceStyle === 'user' ? 'Added by hand — not part of the template.' : 'Edited by hand — differs from what the template generates at these dimensions.'}</div>
+          </div>`
+        : '';
+
       container.innerHTML = `
         <div class="group">
           <div class="eyebrow"><span class="n">03</span> Inspector · line</div>
@@ -64,7 +73,9 @@ export function mountInspector(container: HTMLElement, store: Store): InspectorC
           ${row('Role', esc(line.role))}
           ${row('Ply', '—')}
           ${hingeRow}
+          ${overrideRow}
           <button class="btn" id="insp-delete" style="margin-top:6px">Delete line</button>
+          ${overridden ? `<button class="btn" id="insp-revert" style="margin-top:6px; margin-left:6px">Revert to template</button>` : ''}
         </div>`;
       return;
     }
@@ -106,9 +117,11 @@ export function mountInspector(container: HTMLElement, store: Store): InspectorC
   });
 
   container.addEventListener('click', (ev) => {
-    if ((ev.target as HTMLElement).id !== 'insp-delete') return;
+    const id = (ev.target as HTMLElement).id;
     const sel = store.getState().selection;
-    if (sel?.kind === 'line') store.deleteLine(sel.lineId);
+    if (sel?.kind !== 'line') return;
+    if (id === 'insp-delete') store.deleteLine(sel.lineId);
+    if (id === 'insp-revert') store.revertLine(sel.lineId);
   });
 
   const unsubscribe = store.subscribe(render);

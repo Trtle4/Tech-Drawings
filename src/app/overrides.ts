@@ -38,6 +38,37 @@ export interface AppliedOverrides {
   graph: GeometryGraph;
   /** Ready to hand straight to `resolveGeometry(graph, { angles })`. */
   hingeAngleOverrides: Map<string, number>;
+  /**
+   * Ops that named a line no longer present when they were replayed — a
+   * dimension change dropped the cell that line belonged to. Not dropped
+   * silently: the caller surfaces these in the unfolded-geometry panel so a
+   * stale edit is visible rather than just quietly not applying.
+   */
+  staleOps: OverrideOp[];
+}
+
+/** Whether a line carries any edit at all — a hand-drawn addition, or a template line an op still targets. */
+export function isLineOverridden(line: DrawingLine, ops: readonly OverrideOp[]): boolean {
+  if (line.sourceStyle === USER_SOURCE) return true;
+  return ops.some((op) => op.kind !== 'add_line' && op.kind !== 'set_hinge_angle' && op.lineId === line.id);
+}
+
+/** Human-readable explanation for why a stale op no longer applies, for the unfolded-geometry panel. */
+export function describeStaleOp(op: OverrideOp): string {
+  switch (op.kind) {
+    case 'delete_line':
+      return 'A delete no longer applies — its line no longer exists at this dimension.';
+    case 'set_line_type':
+      return 'A type change no longer applies — its line no longer exists at this dimension.';
+    case 'move_point':
+      return 'An endpoint edit no longer applies — its line no longer exists at this dimension.';
+    case 'move_line':
+      return 'A line move no longer applies — its line no longer exists at this dimension.';
+    case 'add_line':
+      return 'An added line no longer applies.';
+    case 'set_hinge_angle':
+      return `A hinge angle override no longer matches any hinge between "${op.faceA}" and "${op.faceB}".`;
+  }
 }
 
 function clonePath(p: Path): Path {
@@ -74,6 +105,7 @@ export function translatePath(p: Path, dx: number, dy: number): Path {
 export function applyOverrides(base: GeometryGraph, ops: readonly OverrideOp[]): AppliedOverrides {
   let lines: DrawingLine[] = base.lines.map((l) => ({ ...l, geometry: clonePath(l.geometry) }));
   const hingeAngleOverrides = new Map<string, number>();
+  const staleOps: OverrideOp[] = [];
 
   for (const op of ops) {
     switch (op.kind) {
@@ -87,13 +119,17 @@ export function applyOverrides(base: GeometryGraph, ops: readonly OverrideOp[]):
         });
         break;
 
-      case 'delete_line':
+      case 'delete_line': {
+        const before = lines.length;
         lines = lines.filter((l) => l.id !== op.lineId);
+        if (lines.length === before) staleOps.push(op);
         break;
+      }
 
       case 'set_line_type': {
         const line = lines.find((l) => l.id === op.lineId);
         if (line) line.type = op.type;
+        else staleOps.push(op);
         break;
       }
 
@@ -101,6 +137,8 @@ export function applyOverrides(base: GeometryGraph, ops: readonly OverrideOp[]):
         const line = lines.find((l) => l.id === op.lineId);
         if (line && line.geometry.kind === 'polyline' && op.pointIndex >= 0 && op.pointIndex < line.geometry.points.length) {
           line.geometry.points[op.pointIndex] = { x: op.to.x, y: op.to.y };
+        } else {
+          staleOps.push(op);
         }
         break;
       }
@@ -108,6 +146,7 @@ export function applyOverrides(base: GeometryGraph, ops: readonly OverrideOp[]):
       case 'move_line': {
         const idx = lines.findIndex((l) => l.id === op.lineId);
         if (idx >= 0) lines[idx] = { ...lines[idx]!, geometry: translatePath(lines[idx]!.geometry, op.dx, op.dy) };
+        else staleOps.push(op);
         break;
       }
 
@@ -118,5 +157,5 @@ export function applyOverrides(base: GeometryGraph, ops: readonly OverrideOp[]):
     }
   }
 
-  return { graph: { ...base, lines }, hingeAngleOverrides };
+  return { graph: { ...base, lines }, hingeAngleOverrides, staleOps };
 }

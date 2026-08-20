@@ -151,3 +151,182 @@ describe('fitToBlank', () => {
     expect(cam.cy).toBeCloseTo((bounds.min.y + bounds.max.y) / 2, 6);
   });
 });
+
+describe('undo / redo', () => {
+  it('starts with nothing to undo or redo', () => {
+    const store = new Store(createInitialState(fefco0201.id));
+    expect(store.canUndo()).toBe(false);
+    expect(store.canRedo()).toBe(false);
+  });
+
+  it('undoes an added line back to no lines added', () => {
+    const store = new Store(createInitialState(fefco0201.id));
+    const before = store.getDerived().graph.lines.length;
+    const id = store.addLine('construction', [{ x: 0, y: 0 }, { x: 1, y: 1 }]);
+    expect(store.getDerived().graph.lines.some((l) => l.id === id)).toBe(true);
+    expect(store.canUndo()).toBe(true);
+
+    store.undo();
+    expect(store.getDerived().graph.lines.some((l) => l.id === id)).toBe(false);
+    expect(store.getDerived().graph.lines.length).toBe(before);
+    expect(store.canUndo()).toBe(false);
+    expect(store.canRedo()).toBe(true);
+  });
+
+  it('redo replays the undone edit', () => {
+    const store = new Store(createInitialState(fefco0201.id));
+    const id = store.addLine('construction', [{ x: 0, y: 0 }, { x: 1, y: 1 }]);
+    store.undo();
+    store.redo();
+    expect(store.getDerived().graph.lines.some((l) => l.id === id)).toBe(true);
+    expect(store.canRedo()).toBe(false);
+  });
+
+  it('a new edit after undo drops the redo branch', () => {
+    const store = new Store(createInitialState(fefco0201.id));
+    store.addLine('construction', [{ x: 0, y: 0 }, { x: 1, y: 1 }]);
+    store.undo();
+    expect(store.canRedo()).toBe(true);
+    store.addLine('bleed', [{ x: 2, y: 2 }, { x: 3, y: 3 }]);
+    expect(store.canRedo()).toBe(false);
+  });
+
+  it('undoes a dimension change', () => {
+    const store = new Store(createInitialState(fefco0201.id));
+    const originalL = store.getState().params.L;
+    store.setParam('L', originalL! + 40);
+    expect(store.getState().params.L).toBe(originalL! + 40);
+    store.undo();
+    expect(store.getState().params.L).toBe(originalL);
+  });
+
+  it('undoes a hinge angle edit', () => {
+    const store = new Store(createInitialState(fefco0201.id));
+    const hinge = store.getDerived().resolved.hinges[0]!;
+    const originalAngle = hinge.angle;
+    store.setHingeAngle(hinge.faceA, hinge.faceB, 1.1);
+    store.undo();
+    const after = store.getDerived().resolved.hinges.find((h) => h.id === hinge.id)!;
+    expect(after.angle).toBeCloseTo(originalAngle, 9);
+  });
+
+  it('undo/redo do not touch camera or snap settings', () => {
+    const store = new Store(createInitialState(fefco0201.id));
+    store.setCamera({ cx: 99, cy: -50, zoom: 4 });
+    store.setSnap({ grid: false });
+    store.addLine('cut', [{ x: 0, y: 0 }, { x: 1, y: 1 }]);
+    store.undo();
+    expect(store.getState().camera).toEqual({ cx: 99, cy: -50, zoom: 4 });
+    expect(store.getState().snap.grid).toBe(false);
+  });
+
+  it('undoing past the start, or redoing past the end, is a harmless no-op', () => {
+    const store = new Store(createInitialState(fefco0201.id));
+    store.undo();
+    store.undo();
+    expect(store.getState().ops).toEqual([]);
+    store.redo();
+    expect(store.getState().ops).toEqual([]);
+  });
+
+  it('clears selection on undo/redo, since a selected id may no longer refer to the same thing', () => {
+    const store = new Store(createInitialState(fefco0201.id));
+    const id = store.addLine('cut', [{ x: 0, y: 0 }, { x: 1, y: 1 }]);
+    store.select({ kind: 'line', lineId: id });
+    store.undo();
+    expect(store.getState().selection).toBeNull();
+  });
+});
+
+describe('revertLine', () => {
+  it('removes a user-added line entirely', () => {
+    const store = new Store(createInitialState(fefco0201.id));
+    const id = store.addLine('construction', [{ x: 0, y: 0 }, { x: 1, y: 1 }]);
+    store.revertLine(id);
+    expect(store.getDerived().graph.lines.some((l) => l.id === id)).toBe(false);
+  });
+
+  it('restores a template line to its compiled state, undoing a retype and a move together', () => {
+    const store = new Store(createInitialState(fefco0201.id));
+    const line = store.getDerived().graph.lines[0]!;
+    const originalType = line.type;
+    const originalGeometry = JSON.parse(JSON.stringify(line.geometry));
+    store.setLineType(line.id, 'perf');
+    store.moveLine(line.id, 15, -8);
+    expect(store.getDerived().graph.lines.find((l) => l.id === line.id)!.type).toBe('perf');
+
+    store.revertLine(line.id);
+    const restored = store.getDerived().graph.lines.find((l) => l.id === line.id)!;
+    expect(restored.type).toBe(originalType);
+    expect(restored.geometry).toEqual(originalGeometry);
+  });
+
+  it('leaves edits to other lines alone', () => {
+    const store = new Store(createInitialState(fefco0201.id));
+    const [a, b] = store.getDerived().graph.lines;
+    store.setLineType(a!.id, 'perf');
+    store.setLineType(b!.id, 'score');
+    store.revertLine(a!.id);
+    expect(store.getDerived().graph.lines.find((l) => l.id === a!.id)!.type).not.toBe('perf');
+    expect(store.getDerived().graph.lines.find((l) => l.id === b!.id)!.type).toBe('score');
+  });
+
+  it('is itself undoable', () => {
+    const store = new Store(createInitialState(fefco0201.id));
+    const line = store.getDerived().graph.lines[0]!;
+    store.setLineType(line.id, 'perf');
+    store.revertLine(line.id);
+    expect(store.getDerived().graph.lines.find((l) => l.id === line.id)!.type).not.toBe('perf');
+    store.undo();
+    expect(store.getDerived().graph.lines.find((l) => l.id === line.id)!.type).toBe('perf');
+  });
+});
+
+describe('revertAll', () => {
+  it('clears every op but leaves dimensions untouched', () => {
+    const store = new Store(createInitialState(fefco0201.id));
+    store.setParam('L', store.getState().params.L! + 20);
+    store.addLine('cut', [{ x: 0, y: 0 }, { x: 1, y: 1 }]);
+    const line = store.getDerived().graph.lines[1]!;
+    store.setLineType(line.id, 'perf');
+
+    const paramBefore = store.getState().params.L;
+    store.revertAll();
+    expect(store.getState().ops).toEqual([]);
+    expect(store.getState().params.L).toBe(paramBefore);
+  });
+});
+
+describe('staleOverrides — flagged, not silently dropped', () => {
+  it('a line-targeting op whose line no longer exists is reported', () => {
+    const store = new Store(createInitialState(fefco0201.id));
+    store.pushOp({ kind: 'set_line_type', lineId: 'not.a.real.line', type: 'perf' });
+    const stale = store.getDerived().staleOverrides;
+    expect(stale).toHaveLength(1);
+    expect(stale[0]!.op.kind).toBe('set_line_type');
+    expect(stale[0]!.message).toMatch(/no longer/i);
+  });
+
+  it('a hinge angle override whose face pair no longer resolves to a hinge is reported', () => {
+    const store = new Store(createInitialState(fefco0201.id));
+    store.setHingeAngle('face.nope.a', 'face.nope.b', 1.0);
+    const stale = store.getDerived().staleOverrides;
+    expect(stale).toHaveLength(1);
+    expect(stale[0]!.op.kind).toBe('set_hinge_angle');
+  });
+
+  it('a still-valid override is not reported as stale', () => {
+    const store = new Store(createInitialState(fefco0201.id));
+    const line = store.getDerived().graph.lines[0]!;
+    store.setLineType(line.id, 'perf');
+    expect(store.getDerived().staleOverrides).toEqual([]);
+  });
+
+  it('the graph itself is unaffected by a stale op — it is simply not applied', () => {
+    const store = new Store(createInitialState(fefco0201.id));
+    const before = store.getDerived().graph.lines.length;
+    store.pushOp({ kind: 'delete_line', lineId: 'not.a.real.line' });
+    expect(store.getDerived().graph.lines.length).toBe(before);
+    expect(store.getDerived().staleOverrides).toHaveLength(1);
+  });
+});
