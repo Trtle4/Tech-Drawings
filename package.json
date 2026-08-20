@@ -12,11 +12,14 @@
     "demo:styles": "tsx scripts/demo-styles.ts",
     "diagnose:chains": "tsx scripts/diagnose-open-chains.ts",
     "demo:theme": "tsx scripts/build-theme-preview.ts",
-    "build:preview": "tsx scripts/build-preview.ts",
+    "build:gallery": "tsx scripts/build-preview.ts",
+    "build:app": "tsx scripts/build-app.ts",
     "export:dxf": "tsx scripts/export-dxf.ts"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",
+    "esbuild": "^0.28.2",
+    "playwright": "^1.62.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"

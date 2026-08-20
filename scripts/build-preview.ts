@@ -1,14 +1,13 @@
 /**
- * Builds the static preview site: `index.html` at the repo root, which is what
- * the Pages workflow serves.
+ * Builds the static style gallery: `gallery.html` at the repo root.
  *
- *   npm run build:preview
+ *   npm run build:gallery
  *
  * Every catalogue style is compiled, resolved and pre-rendered — the flat blank
  * with its dimensions and panel labels, and an isometric projection of the fold
- * transforms. Static: the tabs switch between pre-rendered styles, there is no
- * app behind it yet. It exists so the geometry and the design system can be
- * looked at before the real 2D canvas is built in step 3.
+ * transforms. Static: no editing, no live params. Superseded as the deployed
+ * root page by the real editor (`build:app` -> `index.html`) once step 3
+ * landed; kept as a quick way to eyeball every catalogue style at once.
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve as resolvePath } from 'node:path';
@@ -470,8 +469,8 @@ ${entries.map((e, i) => section(entries, e, i === 0)).join('\n')}
 `;
 
 mkdirSync(ROOT, { recursive: true });
-writeFileSync(resolvePath(ROOT, 'index.html'), page, 'utf8');
-console.log(`index.html -> ${resolvePath(ROOT, 'index.html')}  (${(page.length / 1024).toFixed(0)} KB)`);
+writeFileSync(resolvePath(ROOT, 'gallery.html'), page, 'utf8');
+console.log(`gallery.html -> ${resolvePath(ROOT, 'gallery.html')}  (${(page.length / 1024).toFixed(0)} KB)`);
 for (const e of entries) {
   const r = e.resolved;
   console.log(`  ${e.def.id.padEnd(22)} ${r.faces.length} faces, ${r.hinges.length} hinges, ${r.unresolved.length} unresolved`);

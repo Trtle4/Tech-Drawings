@@ -818,6 +818,35 @@ main {
   accent-color: var(--accent);
 }
 
+/* Toolbar's own type selector, e.g. the 2D editor's "Add line" type. */
+.viewport-toolbar select {
+  font-family: var(--sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 6px;
+  min-height: 44px;
+}
+
+.pane-canvas.tool-select {
+  cursor: default;
+}
+
+.pane-canvas.tool-draw {
+  cursor: crosshair;
+}
+
+.pane-canvas.panning {
+  cursor: grabbing;
+}
+
+.handle-pt {
+  cursor: grab;
+}
+
 /* The drawing never runs under the floating title block. Reserving a fixed
    strip is deterministic; sizing the reserve as a fraction of the blank is
    not, because the title block is a fixed pixel height while the blank's
