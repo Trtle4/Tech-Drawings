@@ -223,12 +223,23 @@ export interface ExtraSeedSpec {
  */
 export interface FormedShapeSpec {
   /**
-   * Which approximation to apply. `tube` suits a pillow or gusseted bag: a
-   * girth-preserving section with flattened, crimped ends. `gusseted_pouch`
-   * suits a SUP: an opened base swept from the gusset fold with the walls
-   * bowed out. `none` keeps the rigid fold.
+   * Which approximation to apply, and — this is the part that matters —
+   * every one of these is a closed-form function of the flat pattern and the
+   * style's own compiled params. None of them read the fold tree. A bag is
+   * film, not board: its 3D shape comes from its own seals and how full it
+   * is, not from a rigid hinge-chain traversal.
+   *
+   * `crimped_tube` suits a pillow bag: a girth-preserving round section down
+   * the body, tapering to a flat crimped line at the true top/bottom seals —
+   * `faceRoles` wrap the circumference (including any fin), `flatFaceRoles`
+   * are the crimp bands, always flat regardless of fill.
+   * `tube` is the older, coarser version still used by the gusseted bag.
+   * `gusseted_pouch` suits a SUP: an opened base swept from the gusset fold
+   * with the walls bowed out.
+   * `none` keeps the rigid fold — correct for every carton and case, wrong
+   * for anything without a rigid folded state.
    */
-  kind: 'none' | 'tube' | 'gusseted_pouch';
+  kind: 'none' | 'tube' | 'crimped_tube' | 'gusseted_pouch';
   /**
    * Roles of the faces the approximation deforms. Everything else keeps its
    * folded transform, so seals and flaps stay rigid while panels billow.

@@ -5,6 +5,7 @@
  */
 import type { DrawingLine, Face, Vec2 } from '../geometry/types.js';
 import { flattenPath } from '../geometry/arrangement.js';
+import { WELD_TOL } from '../geometry/math.js';
 
 function distToSegment(p: Vec2, a: Vec2, b: Vec2): number {
   const dx = b.x - a.x;
@@ -63,6 +64,28 @@ export function hitTestEndpoint(p: Vec2, lines: readonly DrawingLine[], tol: num
     }
   }
   return best;
+}
+
+/**
+ * Every (line, point index) whose point coincides with `at` within the
+ * geometry core's own weld tolerance — the same distance `resolveGeometry`
+ * uses to decide two endpoints are one vertex. This is what "the shared
+ * vertex" means: not every line that starts near this point, every line the
+ * face detector would actually weld here.
+ */
+export function findCoincidentPoints(
+  lines: readonly DrawingLine[],
+  at: Vec2,
+  tol: number = WELD_TOL,
+): EndpointHit[] {
+  const hits: EndpointHit[] = [];
+  for (const l of lines) {
+    if (l.geometry.kind !== 'polyline') continue;
+    l.geometry.points.forEach((pt, i) => {
+      if (Math.hypot(pt.x - at.x, pt.y - at.y) <= tol) hits.push({ lineId: l.id, pointIndex: i, point: pt });
+    });
+  }
+  return hits;
 }
 
 /** Even-odd ray cast. `ring` need not be closed explicitly (wraps last -> first). */

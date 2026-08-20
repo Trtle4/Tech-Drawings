@@ -102,6 +102,16 @@ describe('collectSnapCandidates', () => {
     const c = collectSnapCandidates(lines, lines[0]!.id);
     expect(c.endpoints).toHaveLength(2);
   });
+
+  it('excludes a whole array of lines — a welded vertex drag should not snap to its own group', () => {
+    const lines = [
+      seg('cut', 'a', { x: 0, y: 0 }, { x: 10, y: 0 }),
+      seg('cut', 'b', { x: 0, y: 10 }, { x: 10, y: 10 }),
+      seg('cut', 'c', { x: 0, y: 20 }, { x: 10, y: 20 }),
+    ];
+    const c = collectSnapCandidates(lines, [lines[0]!.id, lines[1]!.id]);
+    expect(c.endpoints).toHaveLength(2); // only line c's
+  });
 });
 
 describe('snapPoint', () => {

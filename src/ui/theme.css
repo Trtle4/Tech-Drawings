@@ -843,6 +843,14 @@ main {
   cursor: grabbing;
 }
 
+.pane-canvas.orbiting {
+  cursor: grabbing;
+}
+
+#pane-3d .pane-canvas {
+  cursor: grab;
+}
+
 .handle-pt {
   cursor: grab;
 }

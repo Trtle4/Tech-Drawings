@@ -22,12 +22,22 @@ import { DEFAULT_SNAP, fitToBounds, type Camera2D, type SnapSettings, type Viewp
 
 export type Selection = { kind: 'line'; lineId: string } | { kind: 'face'; faceId: string } | null;
 
+/** Orbit angles plus a pan/zoom of the resulting projected plane — see camera2d.ts's Camera2D, reused as-is for the 2D plane a 3D projection lands on. */
+export interface Camera3DState {
+  azimuth: number;
+  elevation: number;
+  view: Camera2D;
+}
+
+export const DEFAULT_ORBIT = { azimuth: (48 * Math.PI) / 180, elevation: (26 * Math.PI) / 180 };
+
 export interface AppState {
   styleId: string;
   params: Record<string, number>;
   ops: OverrideOp[];
   selection: Selection;
   camera: Camera2D;
+  camera3d: Camera3DState;
   snap: SnapSettings;
   primaryView: '2d' | '3d';
 }
@@ -89,6 +99,7 @@ export function createInitialState(styleId?: string): AppState {
     ops: [],
     selection: null,
     camera: { cx: 0, cy: 0, zoom: 1 },
+    camera3d: { ...DEFAULT_ORBIT, view: { cx: 0, cy: 0, zoom: 1 } },
     snap: DEFAULT_SNAP,
     primaryView: '2d',
   };
@@ -188,6 +199,10 @@ export class Store {
     this.set({ camera });
   }
 
+  setCamera3D(camera3d: Camera3DState): void {
+    this.set({ camera3d });
+  }
+
   setSnap(patch: Partial<SnapSettings>): void {
     this.set({ snap: { ...this.state.snap, ...patch } });
   }
@@ -201,12 +216,19 @@ export class Store {
     this.set({ ops: [...this.state.ops, op] });
   }
 
-  /** Undo every edit touching this one line — a hand-drawn addition disappears, a template line returns to what the style generates. */
+  /**
+   * Undo every edit touching this one line — a hand-drawn addition
+   * disappears, a template line returns to what the style generates. A
+   * shared-vertex move is one topological edit across every line it
+   * touched, so reverting any one of them drops the whole move rather than
+   * leaving the rest welded to a point this line no longer shares.
+   */
   revertLine(lineId: string): void {
     this.pushHistory();
     const ops = this.state.ops.filter((op) => {
       if (op.kind === 'add_line') return op.id !== lineId;
       if (op.kind === 'set_hinge_angle') return true;
+      if (op.kind === 'move_vertex') return !op.targets.some((t) => t.lineId === lineId);
       return op.lineId !== lineId;
     });
     this.set({ ops, selection: null });
@@ -218,8 +240,14 @@ export class Store {
     this.set({ ops: [], selection: null });
   }
 
+  /** Detach one line's endpoint — the deliberate opposite of `moveVertex`. */
   moveLinePoint(lineId: string, pointIndex: number, to: Vec2): void {
     this.pushOp({ kind: 'move_point', lineId, pointIndex, to });
+  }
+
+  /** The default drag: move a shared vertex and every line that has a point coincident with it. */
+  moveVertex(targets: { lineId: string; pointIndex: number }[], to: Vec2): void {
+    this.pushOp({ kind: 'move_vertex', targets, to });
   }
 
   moveLine(lineId: string, dx: number, dy: number): void {

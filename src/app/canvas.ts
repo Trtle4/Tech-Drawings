@@ -17,7 +17,7 @@
 import type { DrawingLine, LineType, Path, Vec2 } from '../geometry/types.js';
 import { flattenPath } from '../geometry/arrangement.js';
 import { isLineOverridden, translatePath } from './overrides.js';
-import { hitTestEndpoint, hitTestFace, hitTestLine } from './hitTest.js';
+import { findCoincidentPoints, hitTestEndpoint, hitTestFace, hitTestLine } from './hitTest.js';
 import {
   collectSnapCandidates,
   modelToScreen,
@@ -50,7 +50,10 @@ type Tool = { kind: 'select' } | { kind: 'draw'; lineType: LineType };
 
 type LiveDrag =
   | { kind: 'pan'; startScreen: Vec2; startCamera: Camera2D }
+  /** Detached: reshapes one line, left over from holding the modifier at pickup. */
   | { kind: 'move_point'; lineId: string; pointIndex: number; startModel: Vec2; to: Vec2 }
+  /** The default: every line sharing this vertex moves with it. */
+  | { kind: 'move_vertex'; targets: { lineId: string; pointIndex: number }[]; from: Vec2; to: Vec2 }
   | { kind: 'move_line'; lineId: string; startModel: Vec2; dx: number; dy: number }
   | { kind: 'draw_place'; start: Vec2 };
 
@@ -62,6 +65,15 @@ function effectivePath(line: DrawingLine, drag: LiveDrag | null): Path {
     return {
       kind: 'polyline',
       points: line.geometry.points.map((p, i) => (i === drag.pointIndex ? drag.to : p)),
+      ...(line.geometry.closed ? { closed: true } : {}),
+    };
+  }
+  if (drag.kind === 'move_vertex' && line.geometry.kind === 'polyline') {
+    const indices = drag.targets.filter((t) => t.lineId === line.id).map((t) => t.pointIndex);
+    if (indices.length === 0) return line.geometry;
+    return {
+      kind: 'polyline',
+      points: line.geometry.points.map((p, i) => (indices.includes(i) ? drag.to : p)),
       ...(line.geometry.closed ? { closed: true } : {}),
     };
   }
@@ -121,9 +133,9 @@ export function mountCanvas(container: HTMLElement, store: Store): CanvasControl
     return screenToModel({ x: ev.clientX - r.left, y: ev.clientY - r.top }, store.getState().camera, viewport());
   }
 
-  function snapped(model: Vec2, excludeLineId?: string): Vec2 {
+  function snapped(model: Vec2, exclude?: string | readonly string[]): Vec2 {
     const derived = store.getDerived();
-    const candidates = collectSnapCandidates(derived.graph.lines, excludeLineId);
+    const candidates = collectSnapCandidates(derived.graph.lines, exclude);
     return snapPoint(model, store.getState().camera, candidates, store.getState().snap);
   }
 
@@ -180,7 +192,16 @@ export function mountCanvas(container: HTMLElement, store: Store): CanvasControl
     const endpointHit = hitTestEndpoint(model, derived.graph.lines, tolEndpoint);
     if (endpointHit) {
       store.select({ kind: 'line', lineId: endpointHit.lineId });
-      drag = { kind: 'move_point', lineId: endpointHit.lineId, pointIndex: endpointHit.pointIndex, startModel: model, to: endpointHit.point };
+      // Default: the shared vertex, and every line coincident with it, moves
+      // together — that is what stops a drag from tearing a weld the face
+      // detector would otherwise have to cope with. Alt detaches: only the
+      // one line under the cursor moves, same as before.
+      if (ev.altKey) {
+        drag = { kind: 'move_point', lineId: endpointHit.lineId, pointIndex: endpointHit.pointIndex, startModel: model, to: endpointHit.point };
+      } else {
+        const targets = findCoincidentPoints(derived.graph.lines, endpointHit.point);
+        drag = { kind: 'move_vertex', targets, from: endpointHit.point, to: endpointHit.point };
+      }
       svg.setPointerCapture(ev.pointerId);
       scheduleRender();
       return;
@@ -228,6 +249,12 @@ export function mountCanvas(container: HTMLElement, store: Store): CanvasControl
       return;
     }
 
+    if (drag.kind === 'move_vertex') {
+      drag = { ...drag, to: snapped(model, drag.targets.map((t) => t.lineId)) };
+      scheduleRender();
+      return;
+    }
+
     if (drag.kind === 'move_line') {
       drag = { ...drag, dx: model.x - drag.startModel.x, dy: model.y - drag.startModel.y };
       scheduleRender();
@@ -262,6 +289,13 @@ export function mountCanvas(container: HTMLElement, store: Store): CanvasControl
       scheduleRender();
       return;
     }
+    if (drag.kind === 'move_vertex') {
+      const { targets, to, from } = drag;
+      if (Math.hypot(to.x - from.x, to.y - from.y) > 1e-9) store.moveVertex(targets, to);
+      drag = null;
+      scheduleRender();
+      return;
+    }
     if (drag.kind === 'move_line') {
       if (Math.hypot(drag.dx, drag.dy) > 1e-9) store.moveLine(drag.lineId, drag.dx, drag.dy);
       drag = null;
@@ -272,7 +306,7 @@ export function mountCanvas(container: HTMLElement, store: Store): CanvasControl
   }
 
   svg.addEventListener('pointerup', (ev) => {
-    if (drag?.kind === 'pan' || drag?.kind === 'move_point' || drag?.kind === 'move_line') {
+    if (drag && drag.kind !== 'draw_place') {
       svg.releasePointerCapture(ev.pointerId);
     }
     endDrag(ev);
@@ -397,11 +431,10 @@ export function mountCanvas(container: HTMLElement, store: Store): CanvasControl
 
     const handleLayer = derived.graph.lines
       .flatMap((l) => {
-        if (l.geometry.kind !== 'polyline') return [];
-        const isDragTarget = drag?.kind === 'move_point' && drag.lineId === l.id;
-        return l.geometry.points.map((p, i) => {
-          const shown = isDragTarget && drag && drag.kind === 'move_point' && drag.pointIndex === i ? drag.to : p;
-          const s = toScreen(shown);
+        const live = effectivePath(l, drag);
+        if (live.kind !== 'polyline') return [];
+        return live.points.map((p, i) => {
+          const s = toScreen(p);
           const isSel = selection?.kind === 'line' && selection.lineId === l.id;
           const r = isSel ? 4.5 : 2.6;
           return `<circle cx="${s.x.toFixed(2)}" cy="${s.y.toFixed(2)}" r="${r}" class="handle-pt" fill="${isSel ? 'var(--accent)' : 'var(--ink-3)'}" data-line-id="${l.id}" data-point-index="${i}"/>`;

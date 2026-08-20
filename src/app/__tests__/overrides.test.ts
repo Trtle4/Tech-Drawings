@@ -244,6 +244,7 @@ describe('describeStaleOp', () => {
       { kind: 'delete_line', lineId: 'x' },
       { kind: 'set_line_type', lineId: 'x', type: 'perf' },
       { kind: 'move_point', lineId: 'x', pointIndex: 0, to: { x: 0, y: 0 } },
+      { kind: 'move_vertex', targets: [{ lineId: 'x', pointIndex: 0 }], to: { x: 0, y: 0 } },
       { kind: 'move_line', lineId: 'x', dx: 1, dy: 1 },
       { kind: 'add_line', id: 'x', type: 'cut', role: 'x', points: [{ x: 0, y: 0 }, { x: 1, y: 1 }] },
       { kind: 'set_hinge_angle', faceA: 'a', faceB: 'b', angleRad: 1 },
@@ -251,5 +252,78 @@ describe('describeStaleOp', () => {
     const messages = ops.map(describeStaleOp);
     for (const m of messages) expect(m.length).toBeGreaterThan(0);
     expect(new Set(messages).size).toBe(messages.length);
+  });
+});
+
+describe('move_vertex — topological welding, no semantic propagation', () => {
+  // Three lines sharing a vertex at the origin, plus one that does not.
+  function weldedFixture() {
+    return graph([
+      seg('cut', 'a', { x: 0, y: 0 }, { x: 100, y: 0 }, 'style.test'),
+      seg('crease', 'b', { x: 0, y: 0 }, { x: 0, y: 100 }, 'style.test'),
+      seg('crease', 'c', { x: 0, y: 0 }, { x: -80, y: -80 }, 'style.test'),
+      seg('cut', 'lonely', { x: 500, y: 500 }, { x: 600, y: 600 }, 'style.test'),
+    ]);
+  }
+
+  it('moves every named target to the same new point, and only those targets', () => {
+    const b = weldedFixture();
+    const [a, cr, c, lonely] = b.lines;
+    const targets = [
+      { lineId: a!.id, pointIndex: 0 },
+      { lineId: cr!.id, pointIndex: 0 },
+      { lineId: c!.id, pointIndex: 0 },
+    ];
+    const { graph: g } = applyOverrides(b, [{ kind: 'move_vertex', targets, to: { x: 40, y: 40 } }]);
+
+    for (const id of [a!.id, cr!.id, c!.id]) {
+      const pts = (g.lines.find((l) => l.id === id)!.geometry as { points: { x: number; y: number }[] }).points;
+      expect(pts[0]).toEqual({ x: 40, y: 40 });
+    }
+    // The line that did not share the vertex is untouched.
+    const lonelyPts = (g.lines.find((l) => l.id === lonely!.id)!.geometry as { points: { x: number; y: number }[] }).points;
+    expect(lonelyPts).toEqual([{ x: 500, y: 500 }, { x: 600, y: 600 }]);
+    // Each line's OTHER endpoint is untouched too — this reshapes, it does not translate.
+    const aPts = (g.lines.find((l) => l.id === a!.id)!.geometry as { points: { x: number; y: number }[] }).points;
+    expect(aPts[1]).toEqual({ x: 100, y: 0 });
+  });
+
+  it('applies to whichever targets still exist and flags the op stale if any are missing', () => {
+    const b = weldedFixture();
+    const [a, cr] = b.lines;
+    const targets = [
+      { lineId: a!.id, pointIndex: 0 },
+      { lineId: cr!.id, pointIndex: 0 },
+      { lineId: 'ghost', pointIndex: 0 },
+    ];
+    const { graph: g, staleOps } = applyOverrides(b, [{ kind: 'move_vertex', targets, to: { x: 9, y: 9 } }]);
+    const aPts = (g.lines.find((l) => l.id === a!.id)!.geometry as { points: { x: number; y: number }[] }).points;
+    expect(aPts[0]).toEqual({ x: 9, y: 9 }); // the surviving targets still moved
+    expect(staleOps).toHaveLength(1);
+  });
+
+  it('is fully stale, and applies nothing, when every target is missing', () => {
+    const b = weldedFixture();
+    const targets = [
+      { lineId: 'ghost1', pointIndex: 0 },
+      { lineId: 'ghost2', pointIndex: 0 },
+    ];
+    const { graph: g, staleOps } = applyOverrides(b, [{ kind: 'move_vertex', targets, to: { x: 9, y: 9 } }]);
+    for (let i = 0; i < b.lines.length; i++) {
+      expect((g.lines[i]!.geometry as { points: { x: number; y: number }[] }).points).toEqual(
+        (b.lines[i]!.geometry as { points: { x: number; y: number }[] }).points,
+      );
+    }
+    expect(staleOps).toHaveLength(1);
+  });
+
+  it('marks every targeted line as overridden', () => {
+    const b = weldedFixture();
+    const [a, cr] = b.lines;
+    const op: OverrideOp = { kind: 'move_vertex', targets: [{ lineId: a!.id, pointIndex: 0 }, { lineId: cr!.id, pointIndex: 0 }], to: { x: 1, y: 1 } };
+    expect(isLineOverridden(a!, [op])).toBe(true);
+    expect(isLineOverridden(cr!, [op])).toBe(true);
+    const lonely = b.lines.find((l) => l.role === 'lonely')!;
+    expect(isLineOverridden(lonely, [op])).toBe(false);
   });
 });

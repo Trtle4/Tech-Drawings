@@ -7,10 +7,14 @@
  * recompiles the base and replays the same ops; nothing about an edit is lost
  * by moving a slider.
  *
- * No constraint propagation: `move_point` and `move_line` touch exactly the
- * one line they name. A crease that used to share an endpoint with the line
- * being dragged does not move with it — the drawing is allowed to show a gap.
- * That is deliberate, not a bug to fix later.
+ * No SEMANTIC propagation: nothing here knows what a panel or a flap is, and
+ * never will. `move_vertex` is purely topological — it moves every line that
+ * happens to share a coincident endpoint with the dragged one, using the
+ * same weld tolerance the geometry core uses to decide two points are "the
+ * same vertex" for face detection. That is a correctness fix (a torn vertex
+ * leaves a gap the face detector then has to cope with), not a step toward
+ * constraint solving. `move_point` still exists for the deliberate opposite:
+ * detach one line's endpoint and leave every other line alone.
  */
 import type { DrawingLine, GeometryGraph, LineType, Path, Vec2 } from '../geometry/types.js';
 import { USER_SOURCE } from '../geometry/types.js';
@@ -20,8 +24,15 @@ export type OverrideOp =
   | { kind: 'add_line'; id: string; type: LineType; role: string; points: [Vec2, Vec2] }
   | { kind: 'delete_line'; lineId: string }
   | { kind: 'set_line_type'; lineId: string; type: LineType }
-  /** Reshape: move one endpoint (or interior vertex) of one line. */
+  /** Reshape one line only: move one endpoint (or interior vertex), detached from any line that used to share it. */
   | { kind: 'move_point'; lineId: string; pointIndex: number; to: Vec2 }
+  /**
+   * The default drag: move a shared vertex, and every line that has a point
+   * coincident with it (within weld tolerance) follows. `targets` is the
+   * group as found at drag time — topological, not "every line that was
+   * ever near this point."
+   */
+  | { kind: 'move_vertex'; targets: { lineId: string; pointIndex: number }[]; to: Vec2 }
   /** Translate: shift every point of one line by the same delta. */
   | { kind: 'move_line'; lineId: string; dx: number; dy: number }
   /**
@@ -50,7 +61,11 @@ export interface AppliedOverrides {
 /** Whether a line carries any edit at all — a hand-drawn addition, or a template line an op still targets. */
 export function isLineOverridden(line: DrawingLine, ops: readonly OverrideOp[]): boolean {
   if (line.sourceStyle === USER_SOURCE) return true;
-  return ops.some((op) => op.kind !== 'add_line' && op.kind !== 'set_hinge_angle' && op.lineId === line.id);
+  return ops.some((op) => {
+    if (op.kind === 'add_line' || op.kind === 'set_hinge_angle') return false;
+    if (op.kind === 'move_vertex') return op.targets.some((t) => t.lineId === line.id);
+    return op.lineId === line.id;
+  });
 }
 
 /** Human-readable explanation for why a stale op no longer applies, for the unfolded-geometry panel. */
@@ -62,6 +77,8 @@ export function describeStaleOp(op: OverrideOp): string {
       return 'A type change no longer applies — its line no longer exists at this dimension.';
     case 'move_point':
       return 'An endpoint edit no longer applies — its line no longer exists at this dimension.';
+    case 'move_vertex':
+      return 'A shared-vertex move no longer fully applies — at least one of its lines no longer exists at this dimension.';
     case 'move_line':
       return 'A line move no longer applies — its line no longer exists at this dimension.';
     case 'add_line':
@@ -140,6 +157,22 @@ export function applyOverrides(base: GeometryGraph, ops: readonly OverrideOp[]):
         } else {
           staleOps.push(op);
         }
+        break;
+      }
+
+      case 'move_vertex': {
+        let anyApplied = false;
+        let anyMissing = false;
+        for (const t of op.targets) {
+          const line = lines.find((l) => l.id === t.lineId);
+          if (line && line.geometry.kind === 'polyline' && t.pointIndex >= 0 && t.pointIndex < line.geometry.points.length) {
+            line.geometry.points[t.pointIndex] = { x: op.to.x, y: op.to.y };
+            anyApplied = true;
+          } else {
+            anyMissing = true;
+          }
+        }
+        if (anyMissing || !anyApplied) staleOps.push(op);
         break;
       }
 

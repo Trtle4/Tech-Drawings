@@ -133,15 +133,19 @@ export const bagPillow: StyleDefinition = {
     ],
   },
 
-  // Declared, not consumed. A filled pillow bag is a tube of fixed girth with
-  // crimped ends — the panels billow, the end seals stay flat.
+  // A filled pillow bag is a tube of fixed girth (front + back only — the fin
+  // is two plies pressed flat and sealed, not part of the round section),
+  // round at the body's midpoint and crimped flat at the true top/bottom
+  // seals. The fin stays flat its whole length, body and ends alike.
   formedShape: {
-    kind: 'tube',
+    kind: 'crimped_tube',
     faceRoles: ['front_panel', 'back_panel_left', 'back_panel_right'],
     flatFaceRoles: [
       'front_end_bottom', 'back_left_end_bottom', 'back_right_end_bottom',
       'front_end_top', 'back_left_end_top', 'back_right_end_top',
       'fin_left', 'fin_right',
+      'fin_left_end_bottom', 'fin_right_end_bottom',
+      'fin_left_end_top', 'fin_right_end_top',
     ],
     fill: '0.8',
   },

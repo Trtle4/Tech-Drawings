@@ -99,11 +99,15 @@ export interface SnapCandidates {
  * an arc's midpoint is the flattened point nearest its parameter mid-point —
  * an approximation, fine for a snap target.
  */
-export function collectSnapCandidates(lines: readonly DrawingLine[], excludeLineId?: string): SnapCandidates {
+export function collectSnapCandidates(
+  lines: readonly DrawingLine[],
+  exclude?: string | readonly string[],
+): SnapCandidates {
+  const excluded = new Set(typeof exclude === 'string' ? [exclude] : (exclude ?? []));
   const endpoints: Vec2[] = [];
   const midpoints: Vec2[] = [];
   for (const l of lines) {
-    if (l.id === excludeLineId) continue;
+    if (excluded.has(l.id)) continue;
     const pts = flattenPath(l.geometry);
     if (pts.length === 0) continue;
     endpoints.push(pts[0]!, pts[pts.length - 1]!);

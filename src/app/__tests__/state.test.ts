@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fefco0201 } from '../../styles/catalog/fefco0201.js';
+import { findCoincidentPoints } from '../hitTest.js';
 import { createInitialState, Store } from '../state.js';
 
 describe('createInitialState', () => {
@@ -279,6 +280,29 @@ describe('revertLine', () => {
     expect(store.getDerived().graph.lines.find((l) => l.id === line.id)!.type).not.toBe('perf');
     store.undo();
     expect(store.getDerived().graph.lines.find((l) => l.id === line.id)!.type).toBe('perf');
+  });
+
+  it('a shared-vertex move is one edit: reverting any one of its lines drops the whole move', () => {
+    const store = new Store(createInitialState(fefco0201.id));
+    const lines = store.getDerived().graph.lines;
+    const first = lines[0]!;
+    const p0 = (first.geometry as { points: { x: number; y: number }[] }).points[0]!;
+    const targets = findCoincidentPoints(lines, p0);
+    expect(targets.length).toBeGreaterThan(1); // a real welded vertex in a grid style
+
+    store.moveVertex(targets, { x: p0.x + 12, y: p0.y - 7 });
+    for (const t of targets) {
+      const l = store.getDerived().graph.lines.find((x) => x.id === t.lineId)!;
+      const pt = (l.geometry as { points: { x: number; y: number }[] }).points[t.pointIndex]!;
+      expect(pt).toEqual({ x: p0.x + 12, y: p0.y - 7 });
+    }
+
+    store.revertLine(targets[1]!.lineId); // revert a DIFFERENT line in the same weld group
+    for (const t of targets) {
+      const l = store.getDerived().graph.lines.find((x) => x.id === t.lineId)!;
+      const pt = (l.geometry as { points: { x: number; y: number }[] }).points[t.pointIndex]!;
+      expect(pt).toEqual(p0); // every line in the group is back, not just the reverted one
+    }
   });
 });
 

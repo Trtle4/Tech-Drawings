@@ -74,6 +74,7 @@ export function computeFormedShape(
   }
   const { fill, params } = resolveParams(spec, graph, fillOverride);
   if (spec.kind === 'tube') return tube(resolved, spec, fill);
+  if (spec.kind === 'crimped_tube') return crimpedTube(resolved, spec, fill);
   if (spec.kind === 'gusseted_pouch') return gussetedPouch(resolved, spec, fill, params);
   return rigidFallback(resolved);
 }
@@ -163,6 +164,123 @@ function tube(
       }
     }
     out.set(face.id, { face, points, uv });
+  }
+
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// crimped_tube — pillow bag, no fold-tree dependency at all
+// ---------------------------------------------------------------------------
+
+/**
+ * A round tube down the body, tapering to a flat crimped line at the true
+ * ends. Every face — round or capped — is placed by the same closed-form
+ * function of its own flat (x, y) and the style's params; nothing here reads
+ * `foldedFacePoints` or any other fold-tree output, for any face, at any
+ * fill. A carton's 3D is a fold traversal because rigid facets hinge on
+ * creases; a bag is a film tube whose shape comes from its seals and how
+ * full it is, so this does not derive from folding and does not patch a
+ * folded result afterward — it is its own model, seeded only by dimensions.
+ *
+ * `faceRoles` are the panels that actually round out — front and back, whose
+ * combined flat x-extent is the girth and whose combined flat y-extent is
+ * the body. `flatFaceRoles` is everything that stays the fully flattened
+ * section (a = girth / 2, b = 0) at every fill, over its own full extent —
+ * both the true crimp bands beyond the body's y-extent, AND any fin, for its
+ * whole length, not just its ends. A fin seal is two plies pressed flat and
+ * sealed; it does not round out just because it is narrow. (An earlier
+ * version folded the fin into the round faces on the theory that it "sits at
+ * the seam angle anyway" — over a fin's narrow angular slice, the same
+ * taper that reads as a gentle rounding on a wide panel instead flares from
+ * a near-point at the body's midpoint out to the full flat width at its
+ * edges, a visible spike. Keeping it flat throughout was simpler and is what
+ * a fin actually does.) The round section itself tapers from full radius at
+ * the body's midpoint to that same flattened line at the body's own edges,
+ * so body and crimp band meet without a seam of their own.
+ */
+function crimpedTube(resolved: ResolvedGeometry, spec: FormedShapeSpec, fill: number): Map<string, FormedFace> {
+  const byRole = new Map(resolved.faces.map((f) => [f.role, f]));
+  const roundFaces = (spec.faceRoles ?? []).map((r) => byRole.get(r)).filter((f): f is Face => !!f);
+  const capFaces = (spec.flatFaceRoles ?? []).map((r) => byRole.get(r)).filter((f): f is Face => !!f);
+
+  const out = new Map<string, FormedFace>();
+  // Anything the spec does not mention is drawn flat at its own position —
+  // never the rigid fold, even as a fallback.
+  for (const face of resolved.faces) {
+    out.set(face.id, { face, points: face.outer.points.map((p) => ({ x: p.x, y: p.y, z: 0 })), uv: face.outer.points });
+  }
+  if (roundFaces.length === 0) return out;
+
+  const roundBounds = roundFaces.map((f) => boundsOf(f.outer.points)!);
+  const girthX0 = Math.min(...roundBounds.map((b) => b.min.x));
+  const girthX1 = Math.max(...roundBounds.map((b) => b.max.x));
+  const girth = girthX1 - girthX0;
+  if (girth <= 0) return out;
+
+  const bodyY0 = Math.min(...roundBounds.map((b) => b.min.y));
+  const bodyY1 = Math.max(...roundBounds.map((b) => b.max.y));
+  const bodySpan = bodyY1 - bodyY0 || 1;
+  const R = girth / (2 * Math.PI);
+
+  // 1 at the body's midpoint, 0 at its own top/bottom edge — the round
+  // section's own taper toward the crimp, independent of fill. At taper = 0
+  // the target radius below becomes (girth/2, 0): the same flattened line
+  // the crimp band sits at, which is the continuity this is for — not a
+  // point, a line the width of the flattened tube.
+  const taper = (y: number) => Math.sin(Math.PI * Math.max(0, Math.min(1, (y - bodyY0) / bodySpan)));
+  const angleOf = (x: number) => ((x - girthX0) / girth) * 2 * Math.PI;
+
+  const SEGMENTS_PER_FACE = 10;
+  // A taper only shows up if more than the two end rows are ever sampled —
+  // with just top and bottom, both rows sit exactly at the zero-taper edge
+  // and the whole face would render flat regardless of fill.
+  const ROWS_PER_FACE = 8;
+
+  const place = (face: Face, radiusAt: (y: number) => { a: number; r: number }) => {
+    const bnd = boundsOf(face.outer.points)!;
+    const w = bnd.max.x - bnd.min.x;
+    const h = bnd.max.y - bnd.min.y;
+    const grid: { p: Vec3; uv: Vec2 }[][] = [];
+    for (let j = 0; j <= ROWS_PER_FACE; j++) {
+      const y = bnd.min.y + (h * j) / ROWS_PER_FACE;
+      const { a, r } = radiusAt(y);
+      const row: { p: Vec3; uv: Vec2 }[] = [];
+      for (let i = 0; i <= SEGMENTS_PER_FACE; i++) {
+        const x = bnd.min.x + (w * i) / SEGMENTS_PER_FACE;
+        const angle = angleOf(x);
+        row.push({ p: { x: a * Math.cos(angle), y, z: r * Math.sin(angle) }, uv: { x, y } });
+      }
+      grid.push(row);
+    }
+
+    // Trace just the perimeter of the row x column grid — bottom row left to
+    // right, up the right edge, top row right to left, down the left edge —
+    // one closed, non-self-intersecting outline that still reflects the
+    // interior taper along the way, without needing a separate sub-face per
+    // grid cell.
+    const points: Vec3[] = [];
+    const uv: Vec2[] = [];
+    const push = (cell: { p: Vec3; uv: Vec2 }) => {
+      points.push(cell.p);
+      uv.push(cell.uv);
+    };
+    for (const cell of grid[0]!) push(cell);
+    for (let j = 1; j < grid.length; j++) push(grid[j]![grid[j]!.length - 1]!);
+    for (let i = grid[grid.length - 1]!.length - 2; i >= 0; i--) push(grid[grid.length - 1]![i]!);
+    for (let j = grid.length - 2; j >= 1; j--) push(grid[j]![0]!);
+
+    out.set(face.id, { face, points, uv });
+  };
+
+  for (const face of roundFaces) {
+    place(face, (y) => {
+      const roundedness = fill * taper(y);
+      return { a: lerp(girth / 2, R, roundedness), r: lerp(0, R, roundedness) };
+    });
+  }
+  for (const face of capFaces) {
+    place(face, () => ({ a: girth / 2, r: 0 }));
   }
 
   return out;
