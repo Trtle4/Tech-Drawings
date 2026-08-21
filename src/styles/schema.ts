@@ -221,6 +221,24 @@ export interface ExtraSeedSpec {
  * style with no `formedShape` has the folded state AS its formed state, which
  * is the right answer for every carton and case.
  */
+/**
+ * One cross-section of a `lofted_profile` shape, at a given position along the
+ * blank's up-axis. `halfWidth`/`halfDepth` are the section's own two radii —
+ * an ellipse of those radii, sampled the same way at every station, so two
+ * adjacent stations can be interpolated point-for-point regardless of whether
+ * either one is round, flat, or something between. A flat crimp is simply a
+ * station whose `halfDepth` is small (the film's own half-thickness) rather
+ * than a different code path — same shape function, different numbers.
+ * `girth` (the round faces' combined flat-x extent) is available in these
+ * expressions alongside the style's own params, so a flat crimp can be
+ * written as `halfWidth: 'girth/2'`.
+ */
+export interface LoftStationSpec {
+  y: Expr;
+  halfWidth: Expr;
+  halfDepth: Expr;
+}
+
 export interface FormedShapeSpec {
   /**
    * Which approximation to apply, and — this is the part that matters —
@@ -229,17 +247,21 @@ export interface FormedShapeSpec {
    * film, not board: its 3D shape comes from its own seals and how full it
    * is, not from a rigid hinge-chain traversal.
    *
-   * `crimped_tube` suits a pillow bag: a girth-preserving round section down
-   * the body, tapering to a flat crimped line at the true top/bottom seals —
-   * `faceRoles` wrap the circumference (including any fin), `flatFaceRoles`
-   * are the crimp bands, always flat regardless of fill.
-   * `tube` is the older, coarser version still used by the gusseted bag.
-   * `gusseted_pouch` suits a SUP: an opened base swept from the gusset fold
-   * with the walls bowed out.
+   * `lofted_profile` is the general case: a list of `stations` along the
+   * up-axis, each with its own cross-section, linearly interpolated between
+   * neighbours — a flat end crimp lofting out to a round midpoint and back is
+   * one station list; an oval base lofting up to a flat top is another. One
+   * engine, no per-bag geometry code. `faceRoles` are the panels that lie on
+   * that lofted surface; `flapFaceRoles` are seals (a fin, a side seal) that
+   * do not lie on it — they are placed folded flat against the surface at
+   * the seam, per `flapFold`/`sealStyle`.
+   * `tube` and `gusseted_pouch` are the older, bespoke approximations still
+   * used by the gusseted bag and the SUP, pending their own migration to
+   * `lofted_profile`.
    * `none` keeps the rigid fold — correct for every carton and case, wrong
    * for anything without a rigid folded state.
    */
-  kind: 'none' | 'tube' | 'crimped_tube' | 'gusseted_pouch';
+  kind: 'none' | 'tube' | 'gusseted_pouch' | 'lofted_profile';
   /**
    * Roles of the faces the approximation deforms. Everything else keeps its
    * folded transform, so seals and flaps stay rigid while panels billow.
@@ -247,9 +269,29 @@ export interface FormedShapeSpec {
   faceRoles?: string[];
   /**
    * Roles of the faces held flat — the crimped end seals on a pillow bag, the
-   * side seals on a pouch.
+   * side seals on a pouch. Used by `tube` and `gusseted_pouch` only.
    */
   flatFaceRoles?: string[];
+  /**
+   * `lofted_profile` only: cross-sections along the up-axis, in any order —
+   * sorted by `y` before use. Needs at least two.
+   */
+  stations?: LoftStationSpec[];
+  /**
+   * `lofted_profile` only: seal faces (a fin, a side seal) that are not part
+   * of the lofted surface. Each is placed at the seam nearest its own flat-x
+   * span, folded flat against the surface for `sealStyle: 'fin'` (the
+   * default — a separate flap, offset out from the surface by 2x caliper,
+   * lying along the local tangent toward `flapFold`) or, for `sealStyle:
+   * 'lap'`, treated as a continuation of the lofted surface itself (no
+   * separate flap at all) — the physically correct picture for an overlap
+   * seal, and why it does not protrude the way a mis-modelled fin does.
+   */
+  flapFaceRoles?: string[];
+  /** `lofted_profile` only, `sealStyle: 'fin'`: which side the flap folds onto. Defaults to 'left'. */
+  flapFold?: 'left' | 'right';
+  /** `lofted_profile` only: how flap faces are placed. Defaults to 'fin'. */
+  sealStyle?: 'fin' | 'lap';
   /**
    * How full the pack is, 0 to 1. Drives how far the section rounds out.
    * Presentation only; it never affects the dieline.

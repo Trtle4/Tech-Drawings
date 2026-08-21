@@ -133,47 +133,45 @@ describe.each([['gusseted', bagGusseted]] as const)('tube() — %s bag', (_name,
   });
 });
 
-describe('crimpedTube() — pillow bag: no fold-tree dependency, at all, for any face', () => {
-  it('the crimp bands are flat (z = 0) at every fill, including full inflation', () => {
+describe('loftedProfile() — pillow bag: one lofted-cross-section engine, no fold-tree dependency', () => {
+  it('the end crimp bands stay near-flat (bounded by film thickness), at every fill', () => {
     const { graph, resolved } = setup(bagPillow);
-    const spec = graph.formedShape as FormedShapeSpec;
-    const capRoles = new Set(spec.flatFaceRoles ?? []);
-    expect(capRoles.size).toBeGreaterThan(0);
+    const params = (graph.meta?.params as Record<string, number>) ?? {};
+    const roundRoles = new Set((graph.formedShape as FormedShapeSpec).faceRoles ?? []);
+    const bandRoles = new Set(['front_end_bottom', 'back_left_end_bottom', 'back_right_end_bottom', 'front_end_top', 'back_left_end_top', 'back_right_end_top']);
     for (const fill of [0, 0.5, 1]) {
       const formed = computeFormedShape(graph, resolved, fill);
       for (const face of resolved.faces) {
-        if (!capRoles.has(face.role)) continue;
-        for (const p of formed.get(face.id)!.points) expect(p.z).toBeCloseTo(0, 9);
+        if (!roundRoles.has(face.role) || !bandRoles.has(face.role)) continue;
+        for (const p of formed.get(face.id)!.points) expect(Math.abs(p.z)).toBeLessThanOrEqual(params.caliper! + 1e-9);
       }
     }
   });
 
-  it('the round body flattens to z = 0 at fill = 0', () => {
+  it('the round body flattens toward the crimp cross-section at fill = 0', () => {
     const { graph, resolved } = setup(bagPillow);
-    const spec = graph.formedShape as FormedShapeSpec;
-    const roundRoles = new Set(spec.faceRoles ?? []);
+    const params = (graph.meta?.params as Record<string, number>) ?? {};
+    const roundRoles = new Set((graph.formedShape as FormedShapeSpec).faceRoles ?? []);
     const formed = computeFormedShape(graph, resolved, 0);
     for (const face of resolved.faces) {
       if (!roundRoles.has(face.role)) continue;
-      for (const p of formed.get(face.id)!.points) expect(p.z).toBeCloseTo(0, 9);
+      for (const p of formed.get(face.id)!.points) expect(Math.abs(p.z)).toBeLessThanOrEqual(params.caliper! + 1e-9);
     }
   });
 
-  it('the round body bulges in z as fill rises to 1, and stays exactly flat at fill = 0', () => {
+  it('the midpoint bulges to roughly bagD/2 in z as fill rises to 1, well past the crimp bands', () => {
     const { graph, resolved } = setup(bagPillow);
+    const params = (graph.meta?.params as Record<string, number>) ?? {};
     const spec = graph.formedShape as FormedShapeSpec;
     const roundRoles = new Set(spec.faceRoles ?? []);
-    const maxAbsZ = (fill: number) => {
-      const formed = computeFormedShape(graph, resolved, fill);
-      let maxZ = 0;
-      for (const face of resolved.faces) {
-        if (!roundRoles.has(face.role)) continue;
-        for (const p of formed.get(face.id)!.points) maxZ = Math.max(maxZ, Math.abs(p.z));
-      }
-      return maxZ;
-    };
-    expect(maxAbsZ(0)).toBeCloseTo(0, 9);
-    expect(maxAbsZ(1)).toBeGreaterThan(0); // the body's interior actually rounds out, not just its sampled edges
+    const formed = computeFormedShape(graph, resolved, 1);
+    let maxZ = 0;
+    for (const face of resolved.faces) {
+      if (!roundRoles.has(face.role)) continue;
+      for (const p of formed.get(face.id)!.points) maxZ = Math.max(maxZ, Math.abs(p.z));
+    }
+    expect(maxZ).toBeGreaterThan(params.caliper!);
+    expect(maxZ).toBeCloseTo(params.bagD! / 2, 6);
   });
 
   it('round body and crimp band meet continuously — no seam of their own at the shared edge', () => {
@@ -190,6 +188,50 @@ describe('crimpedTube() — pillow bag: no fold-tree dependency, at all, for any
       const nearest = capPts.reduce((best, p) => (Math.hypot(p.x - fp.x, p.z - fp.z) < Math.hypot(best.x - fp.x, best.z - fp.z) ? p : best));
       expect(Math.hypot(nearest.x - fp.x, nearest.z - fp.z)).toBeLessThan(1e-6);
     }
+  });
+
+  it('the fin lies close against the body, never protruding past the flat crimp half-width', () => {
+    const { graph, resolved } = setup(bagPillow);
+    const params = (graph.meta?.params as Record<string, number>) ?? {};
+    const spec = graph.formedShape as FormedShapeSpec;
+    const roundRoles = new Set(spec.faceRoles ?? []);
+    const flapRoles = new Set(spec.flapFaceRoles ?? []);
+    const formed = computeFormedShape(graph, resolved, 1);
+    let maxRoundRadius = 0;
+    let maxFlapRadius = 0;
+    for (const face of resolved.faces) {
+      const pts = formed.get(face.id)!.points;
+      if (roundRoles.has(face.role)) for (const p of pts) maxRoundRadius = Math.max(maxRoundRadius, Math.hypot(p.x, p.z));
+      if (flapRoles.has(face.role)) for (const p of pts) maxFlapRadius = Math.max(maxFlapRadius, Math.hypot(p.x, p.z));
+    }
+    // The old bug: the fin stood out at the flat crimp's full half-width
+    // (girth / 2, i.e. bagW) regardless of how round the body was at that y.
+    // Folded flat, it should stay within a fin-seal-ish margin of the body's
+    // own actual (fill-dependent) envelope, not out at the flattened width.
+    expect(maxFlapRadius).toBeLessThan(maxRoundRadius + params.finSeal! + 2 * params.caliper! + 1);
+  });
+
+  it("sealStyle: 'lap' places the seal on the lofted surface itself, not as a standing flap", () => {
+    const { graph, resolved } = setup(bagPillow);
+    const finSpec = graph.formedShape as FormedShapeSpec;
+    const lapGraph = { ...graph, formedShape: { ...finSpec, sealStyle: 'lap' as const } };
+    const finFormed = computeFormedShape(graph, resolved, 1);
+    const lapFormed = computeFormedShape(lapGraph, resolved, 1);
+    const fin = resolved.faces.find((f) => f.role === 'fin_left')!;
+    const finPts = finFormed.get(fin.id)!.points;
+    const lapPts = lapFormed.get(fin.id)!.points;
+    expect(lapPts).not.toEqual(finPts);
+    for (const p of lapPts) expect(Number.isFinite(p.x) && Number.isFinite(p.z)).toBe(true);
+  });
+
+  it("flapFold: 'right' folds the fin the opposite way from the default 'left'", () => {
+    const { graph, resolved } = setup(bagPillow);
+    const finSpec = graph.formedShape as FormedShapeSpec;
+    const rightGraph = { ...graph, formedShape: { ...finSpec, flapFold: 'right' as const } };
+    const left = computeFormedShape(graph, resolved, 1);
+    const right = computeFormedShape(rightGraph, resolved, 1);
+    const fin = resolved.faces.find((f) => f.role === 'fin_left')!;
+    expect(right.get(fin.id)!.points).not.toEqual(left.get(fin.id)!.points);
   });
 
   it('is completely unaffected by a hinge angle override — it never reads the fold tree', () => {
@@ -236,7 +278,7 @@ describe('crimpedTube() — pillow bag: no fold-tree dependency, at all, for any
   it('every face is covered — nothing falls through to a bare flat default', () => {
     const { graph, resolved } = setup(bagPillow);
     const spec = graph.formedShape as FormedShapeSpec;
-    const covered = new Set([...(spec.faceRoles ?? []), ...(spec.flatFaceRoles ?? [])]);
+    const covered = new Set([...(spec.faceRoles ?? []), ...(spec.flapFaceRoles ?? [])]);
     const roles = new Set(resolved.faces.map((f) => f.role));
     expect(covered).toEqual(roles);
   });

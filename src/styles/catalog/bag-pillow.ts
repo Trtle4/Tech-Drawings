@@ -57,6 +57,16 @@ export const bagPillow: StyleDefinition = {
       hint: 'Cutoff length, including both end seal bands.',
     },
     {
+      id: 'bagD',
+      label: 'Bag depth',
+      group: 'internal',
+      unit: 'mm',
+      default: 60,
+      min: 10,
+      step: 1,
+      hint: 'Filled depth at the midpoint, front to back. 3D view only — does not affect the dieline.',
+    },
+    {
       id: 'caliper',
       label: 'Film gauge',
       group: 'material',
@@ -133,21 +143,41 @@ export const bagPillow: StyleDefinition = {
     ],
   },
 
-  // A filled pillow bag is a tube of fixed girth (front + back only — the fin
-  // is two plies pressed flat and sealed, not part of the round section),
-  // round at the body's midpoint and crimped flat at the true top/bottom
-  // seals. The fin stays flat its whole length, body and ends alike.
+  // A filled pillow bag is a loft: flat crimp at the bottom seal, out to an
+  // oval bagW x bagD at the body's midpoint, back down to a flat crimp at the
+  // top seal — five stations, one shared engine (see formedShape.ts). Every
+  // face sharing the front/back columns rides that same lofted surface,
+  // including the end-band panels themselves (front_end_bottom etc.): they
+  // are the SAME material as the body panel, just at a y inside the flat
+  // crimp region, so the loft already draws them flat with no separate cap
+  // case. The fin is not part of that surface at all — it folds flat against
+  // the body at double film thickness, toward flapFold, rather than standing
+  // out from it (sealStyle: 'lap' is the no-protrusion overlap alternative).
   formedShape: {
-    kind: 'crimped_tube',
-    faceRoles: ['front_panel', 'back_panel_left', 'back_panel_right'],
-    flatFaceRoles: [
-      'front_end_bottom', 'back_left_end_bottom', 'back_right_end_bottom',
-      'front_end_top', 'back_left_end_top', 'back_right_end_top',
-      'fin_left', 'fin_right',
-      'fin_left_end_bottom', 'fin_right_end_bottom',
-      'fin_left_end_top', 'fin_right_end_top',
+    kind: 'lofted_profile',
+    faceRoles: [
+      'front_panel', 'front_end_bottom', 'front_end_top',
+      'back_panel_left', 'back_left_end_bottom', 'back_left_end_top',
+      'back_panel_right', 'back_right_end_bottom', 'back_right_end_top',
     ],
-    fill: '0.8',
+    flapFaceRoles: [
+      'fin_left', 'fin_left_end_bottom', 'fin_left_end_top',
+      'fin_right', 'fin_right_end_bottom', 'fin_right_end_top',
+    ],
+    flapFold: 'left',
+    sealStyle: 'fin',
+    // halfWidth is bagW/2 at every station, flat crimp and midpoint alike —
+    // side to side, the bag is exactly the front panel's own width the whole
+    // way down (matching the rigid lay-flat fold's own W x L x fin extent);
+    // only halfDepth (front to back) opens up toward the midpoint.
+    stations: [
+      { y: '0', halfWidth: 'bagW/2', halfDepth: 'caliper' },
+      { y: 'endSeal', halfWidth: 'bagW/2', halfDepth: 'caliper' },
+      { y: 'bagL/2', halfWidth: 'bagW/2', halfDepth: 'bagD/2' },
+      { y: 'bagL - endSeal', halfWidth: 'bagW/2', halfDepth: 'caliper' },
+      { y: 'bagL', halfWidth: 'bagW/2', halfDepth: 'caliper' },
+    ],
+    fill: '0.85',
   },
 
   seals: [

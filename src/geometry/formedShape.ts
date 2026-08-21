@@ -19,8 +19,8 @@
  */
 
 import type { Face, GeometryGraph, ResolvedGeometry, Vec2, Vec3 } from './types.js';
-import type { FormedShapeSpec } from '../styles/schema.js';
-import { evalExpr } from '../styles/expr.js';
+import type { FormedShapeSpec, LoftStationSpec } from '../styles/schema.js';
+import { evalExpr, type Scope } from '../styles/expr.js';
 import { foldedFacePoints } from './fold.js';
 import { boundsOf } from './math.js';
 
@@ -74,8 +74,8 @@ export function computeFormedShape(
   }
   const { fill, params } = resolveParams(spec, graph, fillOverride);
   if (spec.kind === 'tube') return tube(resolved, spec, fill);
-  if (spec.kind === 'crimped_tube') return crimpedTube(resolved, spec, fill);
   if (spec.kind === 'gusseted_pouch') return gussetedPouch(resolved, spec, fill, params);
+  if (spec.kind === 'lofted_profile') return loftedProfile(resolved, graph, spec, fill);
   return rigidFallback(resolved);
 }
 
@@ -170,39 +170,66 @@ function tube(
 }
 
 // ---------------------------------------------------------------------------
-// crimped_tube — pillow bag, no fold-tree dependency at all
+// lofted_profile — the general engine: stations along the up-axis, each with
+// its own cross-section, interpolated between. No fold-tree dependency at
+// all. Every bag becomes a station list against this one engine, not a
+// bespoke shape function per bag.
 // ---------------------------------------------------------------------------
 
+interface ResolvedStation {
+  y: number;
+  halfWidth: number;
+  halfDepth: number;
+}
+
+const normalize2 = (x: number, z: number): { x: number; z: number } => {
+  const l = Math.hypot(x, z);
+  return l < 1e-9 ? { x: 1, z: 0 } : { x: x / l, z: z / l };
+};
+
 /**
- * A round tube down the body, tapering to a flat crimped line at the true
- * ends. Every face — round or capped — is placed by the same closed-form
- * function of its own flat (x, y) and the style's params; nothing here reads
- * `foldedFacePoints` or any other fold-tree output, for any face, at any
- * fill. A carton's 3D is a fold traversal because rigid facets hinge on
- * creases; a bag is a film tube whose shape comes from its seals and how
- * full it is, so this does not derive from folding and does not patch a
- * folded result afterward — it is its own model, seeded only by dimensions.
+ * A lofted cross-section, swept along the up-axis. Every face — round or
+ * flap — is placed by a closed-form function of its own flat (x, y) and the
+ * resolved stations; nothing here reads `foldedFacePoints` or any other
+ * fold-tree output, for any face, at any fill. A carton's 3D is a fold
+ * traversal because rigid facets hinge on creases; a bag is a film tube
+ * whose shape comes from its own seals and how full it is, so this does not
+ * derive from folding and does not patch a folded result afterward.
  *
- * `faceRoles` are the panels that actually round out — front and back, whose
- * combined flat x-extent is the girth and whose combined flat y-extent is
- * the body. `flatFaceRoles` is everything that stays the fully flattened
- * section (a = girth / 2, b = 0) at every fill, over its own full extent —
- * both the true crimp bands beyond the body's y-extent, AND any fin, for its
- * whole length, not just its ends. A fin seal is two plies pressed flat and
- * sealed; it does not round out just because it is narrow. (An earlier
- * version folded the fin into the round faces on the theory that it "sits at
- * the seam angle anyway" — over a fin's narrow angular slice, the same
- * taper that reads as a gentle rounding on a wide panel instead flares from
- * a near-point at the body's midpoint out to the full flat width at its
- * edges, a visible spike. Keeping it flat throughout was simpler and is what
- * a fin actually does.) The round section itself tapers from full radius at
- * the body's midpoint to that same flattened line at the body's own edges,
- * so body and crimp band meet without a seam of their own.
+ * `faceRoles` are the panels that lie on the lofted surface — their combined
+ * flat x-extent is the girth, and each panel's own x-position becomes an
+ * angular position around the section. `stations` are resolved against the
+ * style's own params PLUS `girth`, so a flat crimp is written as
+ * `{ halfWidth: 'girth/2', halfDepth: 'caliper' }` — the same ellipse
+ * formula as the round midpoint, just with different numbers, which is what
+ * lets the two loft into each other with no special-cased "flat" path.
+ *
+ * `fill` blends the whole tube, at every y, between the first station's
+ * cross-section (a uniformly flat/closed bag, used at fill = 0) and the
+ * authored per-y loft (fill = 1) — a fully deflated bag has no bulge
+ * anywhere along its length, not just at the ends the stations name.
+ *
+ * `flapFaceRoles` (a fin, a side seal) are not on the lofted surface at all.
+ * `sealStyle: 'fin'` (the default) folds each flap flat against the surface
+ * at its own seam: a straight tangent flap, offset outward by 2x caliper,
+ * running its own true width toward `flapFold`. `sealStyle: 'lap'` instead
+ * treats the flap as a continuation of the SAME lofted surface — its flat x
+ * sits just outside the round span, and `angleOf` is unclamped, so it
+ * samples the loft smoothly past the seam rather than switching formula —
+ * offset out by 2x caliper for the extra ply, never standing proud of the
+ * body the way a straight flap does. That difference is exactly "no
+ * protruding fin": an overlap seal is physically part of the same wrapped
+ * film, not a separate flap sealed on afterward.
  */
-function crimpedTube(resolved: ResolvedGeometry, spec: FormedShapeSpec, fill: number): Map<string, FormedFace> {
+function loftedProfile(
+  resolved: ResolvedGeometry,
+  graph: GeometryGraph,
+  spec: FormedShapeSpec,
+  fill: number,
+): Map<string, FormedFace> {
   const byRole = new Map(resolved.faces.map((f) => [f.role, f]));
   const roundFaces = (spec.faceRoles ?? []).map((r) => byRole.get(r)).filter((f): f is Face => !!f);
-  const capFaces = (spec.flatFaceRoles ?? []).map((r) => byRole.get(r)).filter((f): f is Face => !!f);
+  const flapFaces = (spec.flapFaceRoles ?? []).map((r) => byRole.get(r)).filter((f): f is Face => !!f);
 
   const out = new Map<string, FormedFace>();
   // Anything the spec does not mention is drawn flat at its own position —
@@ -210,7 +237,7 @@ function crimpedTube(resolved: ResolvedGeometry, spec: FormedShapeSpec, fill: nu
   for (const face of resolved.faces) {
     out.set(face.id, { face, points: face.outer.points.map((p) => ({ x: p.x, y: p.y, z: 0 })), uv: face.outer.points });
   }
-  if (roundFaces.length === 0) return out;
+  if (roundFaces.length === 0 || (spec.stations ?? []).length < 2) return out;
 
   const roundBounds = roundFaces.map((f) => boundsOf(f.outer.points)!);
   const girthX0 = Math.min(...roundBounds.map((b) => b.min.x));
@@ -218,46 +245,52 @@ function crimpedTube(resolved: ResolvedGeometry, spec: FormedShapeSpec, fill: nu
   const girth = girthX1 - girthX0;
   if (girth <= 0) return out;
 
-  const bodyY0 = Math.min(...roundBounds.map((b) => b.min.y));
-  const bodyY1 = Math.max(...roundBounds.map((b) => b.max.y));
-  const bodySpan = bodyY1 - bodyY0 || 1;
-  const R = girth / (2 * Math.PI);
+  const paramScope = (graph.meta?.params as Record<string, number> | undefined) ?? {};
+  const scope: Scope = { ...paramScope, girth };
+  const stations: ResolvedStation[] = spec
+    .stations!.map((s: LoftStationSpec) => ({
+      y: evalExpr(s.y, scope),
+      halfWidth: evalExpr(s.halfWidth, scope),
+      halfDepth: evalExpr(s.halfDepth, scope),
+    }))
+    .sort((a, b) => a.y - b.y);
+  const flatRef = stations[0]!;
 
-  // 1 at the body's midpoint, 0 at its own top/bottom edge — the round
-  // section's own taper toward the crimp, independent of fill. At taper = 0
-  // the target radius below becomes (girth/2, 0): the same flattened line
-  // the crimp band sits at, which is the continuity this is for — not a
-  // point, a line the width of the flattened tube.
-  const taper = (y: number) => Math.sin(Math.PI * Math.max(0, Math.min(1, (y - bodyY0) / bodySpan)));
-  const angleOf = (x: number) => ((x - girthX0) / girth) * 2 * Math.PI;
+  const angleOf = (x: number) => (x - girthX0) / girth; // t, unclamped — can run past [0, 1]
+
+  const stationAt = (y: number): { halfWidth: number; halfDepth: number } => {
+    let i = 0;
+    while (i < stations.length - 2 && y > stations[i + 1]!.y) i++;
+    const s0 = stations[i]!;
+    const s1 = stations[i + 1]!;
+    const span = s1.y - s0.y || 1;
+    const frac = Math.max(0, Math.min(1, (y - s0.y) / span));
+    return { halfWidth: lerp(s0.halfWidth, s1.halfWidth, frac), halfDepth: lerp(s0.halfDepth, s1.halfDepth, frac) };
+  };
+
+  /** The lofted surface point at girth-fraction t and length y, blended by fill. */
+  const surfaceAt = (y: number, t: number): { x: number; z: number } => {
+    const st = stationAt(y);
+    const halfWidth = lerp(flatRef.halfWidth, st.halfWidth, fill);
+    const halfDepth = lerp(flatRef.halfDepth, st.halfDepth, fill);
+    const angle = t * 2 * Math.PI;
+    return { x: halfWidth * Math.cos(angle), z: halfDepth * Math.sin(angle) };
+  };
+
+  /** The FLAT reference cross-section alone, at girth-fraction t — fixed, no y or fill. */
+  const flatAt = (t: number): { x: number; z: number } => {
+    const angle = t * 2 * Math.PI;
+    return { x: flatRef.halfWidth * Math.cos(angle), z: flatRef.halfDepth * Math.sin(angle) };
+  };
 
   const SEGMENTS_PER_FACE = 10;
-  // A taper only shows up if more than the two end rows are ever sampled —
-  // with just top and bottom, both rows sit exactly at the zero-taper edge
-  // and the whole face would render flat regardless of fill.
   const ROWS_PER_FACE = 8;
 
-  const place = (face: Face, radiusAt: (y: number) => { a: number; r: number }) => {
-    const bnd = boundsOf(face.outer.points)!;
-    const w = bnd.max.x - bnd.min.x;
-    const h = bnd.max.y - bnd.min.y;
-    const grid: { p: Vec3; uv: Vec2 }[][] = [];
-    for (let j = 0; j <= ROWS_PER_FACE; j++) {
-      const y = bnd.min.y + (h * j) / ROWS_PER_FACE;
-      const { a, r } = radiusAt(y);
-      const row: { p: Vec3; uv: Vec2 }[] = [];
-      for (let i = 0; i <= SEGMENTS_PER_FACE; i++) {
-        const x = bnd.min.x + (w * i) / SEGMENTS_PER_FACE;
-        const angle = angleOf(x);
-        row.push({ p: { x: a * Math.cos(angle), y, z: r * Math.sin(angle) }, uv: { x, y } });
-      }
-      grid.push(row);
-    }
-
+  const traceGrid = (face: Face, grid: { p: Vec3; uv: Vec2 }[][]): void => {
     // Trace just the perimeter of the row x column grid — bottom row left to
     // right, up the right edge, top row right to left, down the left edge —
     // one closed, non-self-intersecting outline that still reflects the
-    // interior taper along the way, without needing a separate sub-face per
+    // interior loft along the way, without needing a separate sub-face per
     // grid cell.
     const points: Vec3[] = [];
     const uv: Vec2[] = [];
@@ -269,18 +302,89 @@ function crimpedTube(resolved: ResolvedGeometry, spec: FormedShapeSpec, fill: nu
     for (let j = 1; j < grid.length; j++) push(grid[j]![grid[j]!.length - 1]!);
     for (let i = grid[grid.length - 1]!.length - 2; i >= 0; i--) push(grid[grid.length - 1]![i]!);
     for (let j = grid.length - 2; j >= 1; j--) push(grid[j]![0]!);
-
     out.set(face.id, { face, points, uv });
   };
 
   for (const face of roundFaces) {
-    place(face, (y) => {
-      const roundedness = fill * taper(y);
-      return { a: lerp(girth / 2, R, roundedness), r: lerp(0, R, roundedness) };
-    });
+    const bnd = boundsOf(face.outer.points)!;
+    const w = bnd.max.x - bnd.min.x;
+    const h = bnd.max.y - bnd.min.y;
+    const grid: { p: Vec3; uv: Vec2 }[][] = [];
+    for (let j = 0; j <= ROWS_PER_FACE; j++) {
+      const y = bnd.min.y + (h * j) / ROWS_PER_FACE;
+      const row: { p: Vec3; uv: Vec2 }[] = [];
+      for (let i = 0; i <= SEGMENTS_PER_FACE; i++) {
+        const x = bnd.min.x + (w * i) / SEGMENTS_PER_FACE;
+        const { x: px, z } = surfaceAt(y, angleOf(x));
+        row.push({ p: { x: px, y, z }, uv: { x, y } });
+      }
+      grid.push(row);
+    }
+    traceGrid(face, grid);
   }
-  for (const face of capFaces) {
-    place(face, () => ({ a: girth / 2, r: 0 }));
+
+  const thickness = 2 * graph.caliper;
+  const sealStyle = spec.sealStyle ?? 'fin';
+  // girthX0 (t = 0) sits at the seam, and +t runs forward through the
+  // round faceRoles in their flat left-to-right order — for the pillow that
+  // is back_panel_left first, so 'left' (the default) is +t and 'right' is
+  // -t, matching those role names.
+  const foldSign = spec.flapFold === 'right' ? -1 : 1;
+  const TANGENT_STEP = 0.01; // in girth-fraction t
+
+  for (const face of flapFaces) {
+    const bnd = boundsOf(face.outer.points)!;
+    const w = bnd.max.x - bnd.min.x;
+    const h = bnd.max.y - bnd.min.y;
+    const distMin = Math.min(Math.abs(bnd.min.x - girthX0), Math.abs(bnd.min.x - girthX1));
+    const distMax = Math.min(Math.abs(bnd.max.x - girthX0), Math.abs(bnd.max.x - girthX1));
+    const attachX = distMin <= distMax ? bnd.min.x : bnd.max.x;
+    const seamT = Math.round(angleOf(attachX)); // periodic: 0 or 1, the same physical seam point
+
+    const grid: { p: Vec3; uv: Vec2 }[][] = [];
+    for (let j = 0; j <= ROWS_PER_FACE; j++) {
+      const y = bnd.min.y + (h * j) / ROWS_PER_FACE;
+      const row: { p: Vec3; uv: Vec2 }[] = [];
+
+      if (sealStyle === 'lap') {
+        // Not a separate flap — the same lofted surface, sampled past the
+        // seam, offset out by the extra ply's thickness along the local
+        // radial direction.
+        for (let i = 0; i <= SEGMENTS_PER_FACE; i++) {
+          const x = bnd.min.x + (w * i) / SEGMENTS_PER_FACE;
+          const p = surfaceAt(y, angleOf(x));
+          const n = normalize2(p.x, p.z);
+          row.push({ p: { x: p.x + n.x * thickness, y, z: p.z + n.z * thickness }, uv: { x, y } });
+        }
+      } else {
+        // A straight flap, folded flat against the surface at the seam: a
+        // fixed offset out from the seam point, running its own true width
+        // along a fixed tangent toward flapFold. The tangent MUST come from
+        // the flat reference cross-section, not the current (possibly
+        // rounded) surfaceAt — at the seam, which sits at the ellipse's own
+        // widest point, the round surface's tangent runs almost entirely in
+        // z (that IS the tube's curvature there), so building the flap from
+        // it swings the flap out to the side by as much as the section's own
+        // depth, the exact "sticking out like a flag" bug this replaces. A
+        // flap that is actually folded flat stays flat regardless of how
+        // round the body is elsewhere: it runs along the flat width
+        // direction, which is what the degenerate flat ellipse gives.
+        const base = surfaceAt(y, seamT);
+        const flatBase = flatAt(seamT);
+        const flatStep = flatAt(seamT + foldSign * TANGENT_STEP);
+        const tangent = normalize2(flatStep.x - flatBase.x, flatStep.z - flatBase.z);
+        const normal = normalize2(base.x, base.z);
+        for (let i = 0; i <= SEGMENTS_PER_FACE; i++) {
+          const x = bnd.min.x + (w * i) / SEGMENTS_PER_FACE;
+          const along = Math.abs(x - attachX);
+          const px = base.x + normal.x * thickness + tangent.x * along;
+          const pz = base.z + normal.z * thickness + tangent.z * along;
+          row.push({ p: { x: px, y, z: pz }, uv: { x, y } });
+        }
+      }
+      grid.push(row);
+    }
+    traceGrid(face, grid);
   }
 
   return out;
