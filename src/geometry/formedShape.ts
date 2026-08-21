@@ -46,13 +46,17 @@ export interface FormedFace {
   face: Face;
   facets: FormedFacet[];
   /**
-   * The face's own outer boundary, world points, drawn as a stroke-only line
-   * separate from the (possibly many) shaded facets. Facets themselves are
-   * seamed in their own fill colour so tessellation never shows as a visible
-   * mesh; this is what actually marks where one face ends and its neighbour
-   * — a different panel, a folded-on fin — begins.
+   * The face's own outer boundary (or boundaries), world points, each a
+   * closed loop drawn as a stroke-only line separate from the (possibly
+   * many) shaded facets. Facets themselves are seamed in their own fill
+   * colour so tessellation never shows as a visible mesh; this is what
+   * actually marks where one face ends and its neighbour — a different
+   * panel, a folded-on fin, a dog-ear crease — begins. Usually one loop;
+   * more than one when a face carries its own separately-folded features
+   * (a dog-ear tucked onto a panel has its own boundary, distinct from the
+   * panel's main envelope).
    */
-  outline: Vec3[];
+  outline: Vec3[][];
 }
 
 /**
@@ -104,7 +108,7 @@ export function computeFormedShape(
 function rigidFallback(resolved: ResolvedGeometry): Map<string, FormedFace> {
   const out = new Map<string, FormedFace>();
   for (const [id, { face, points }] of foldedFacePoints(resolved, 1)) {
-    out.set(id, { face, facets: [{ points, uv: face.outer.points }], outline: points });
+    out.set(id, { face, facets: [{ points, uv: face.outer.points }], outline: [points] });
   }
   return out;
 }
@@ -185,7 +189,7 @@ function tube(
         uv.push(...rowUv.reverse());
       }
     }
-    out.set(face.id, { face, facets: [{ points, uv }], outline: points });
+    out.set(face.id, { face, facets: [{ points, uv }], outline: [points] });
   }
 
   return out;
@@ -337,7 +341,7 @@ function loftedProfile(
   // never the rigid fold, even as a fallback.
   for (const face of resolved.faces) {
     const flatPoints = face.outer.points.map((p) => ({ x: p.x, y: p.y, z: 0 }));
-    out.set(face.id, { face, facets: [{ points: flatPoints, uv: face.outer.points }], outline: flatPoints });
+    out.set(face.id, { face, facets: [{ points: flatPoints, uv: face.outer.points }], outline: [flatPoints] });
   }
   if (roundFaces.length === 0 || (spec.stations ?? []).length < 2) return out;
 
@@ -399,11 +403,31 @@ function loftedProfile(
     };
   };
 
+  // The envelope's WIDTH does not vary with y at all, even though the
+  // isoperimetric width solved per station does. A filled tube does not
+  // hold the girth's full isoperimetric width everywhere — it can only do
+  // that at the roundest (deepest) station, where the cross-section is
+  // closest to circular and needs its whole perimeter just to enclose that
+  // depth. Everywhere shallower (toward a crimp), the same girth would
+  // isoperimetrically need MORE width than the body actually has, and that
+  // excess does not billow outward as a smooth taper — real film has
+  // nowhere to put it but a fold. So the envelope's own half-width is
+  // pinned to the deepest station's, a constant, and the difference between
+  // that and each station's true isoperimetric half-width becomes the
+  // dog-ear excess folded onto a panel below, not a wasp-waist bulge here.
+  const bodyStation = stations.reduce((best, s) => (s.halfDepth > best.halfDepth ? s : best));
+  const bodyHalfWidth = bodyStation.halfWidth;
+
+  /** Per-side excess half-width at y: how much wider the girth-constrained
+   * isoperimetric section would need to be than the constant body envelope,
+   * i.e. exactly what a dog-ear at this y must fold away. Zero at (and near)
+   * the body station, growing toward a crimp. */
+  const excessHalfWidthAt = (y: number): number => Math.max(0, stationAt(y).halfWidth - bodyHalfWidth) * fill;
+
   /** The lofted surface point at girth-fraction t and length y, blended by fill. */
   const surfaceAt = (y: number, t: number): { x: number; z: number } => {
-    const st = stationAt(y);
-    const halfWidth = lerp(flatRef.halfWidth, st.halfWidth, fill);
-    const halfDepth = lerp(flatRef.halfDepth, st.halfDepth, fill);
+    const halfWidth = lerp(flatRef.halfWidth, bodyHalfWidth, fill);
+    const halfDepth = lerp(flatRef.halfDepth, stationAt(y).halfDepth, fill);
     const angle = t * 2 * Math.PI + phase;
     return { x: halfWidth * Math.cos(angle), z: halfDepth * Math.sin(angle) };
   };
@@ -462,13 +486,91 @@ function loftedProfile(
     return grid;
   };
 
+  const thickness = 2 * graph.caliper;
+
+  // A round face's own edge at girth-fraction t = 0 (mod 1) is the seam —
+  // the flat pattern's two web edges meeting, where a flapFaceRole (the fin)
+  // already attaches — never a dog-ear. Every OTHER round-to-round boundary
+  // sits at a WIDTH EXTREME of the (now constant-width) envelope: x = ±
+  // bodyHalfWidth, z = 0, for every y, by construction — the cross-section's
+  // own cos(angle) term is stationary there regardless of halfDepth. That
+  // boundary is a candidate for a dog-ear wherever excessHalfWidthAt is
+  // nonzero along it.
+  const SEAM_T_EPS = 1e-6;
+  const isSeamT = (t: number) => Math.abs(t - Math.round(t)) < SEAM_T_EPS;
+  const DOGEAR_EPS_MM = 0.05;
+
+  /**
+   * A triangular dog-ear folded against the face it's attached to, from its
+   * edge at girth-fraction `edgeT`. That edge is a width-extreme line
+   * (constant x = ±bodyHalfWidth, z = 0) running the face's full height, so
+   * "folding the excess back" is not a tangent-plane offset the way the fin
+   * is (the fin attaches at a DEPTH extreme, where the flat tangent runs
+   * cleanly along x) — here the local tangent is degenerate (it runs in z,
+   * the wrong axis to fold along). Instead this displaces straight inward
+   * along x, by `excessHalfWidthAt(y)` itself, which is exactly the distance
+   * between the constant envelope and the wider isoperimetric section that
+   * boundary would otherwise have needed — a real crease running the fold's
+   * own length, tapering to zero at the body station and widest at a crimp.
+   * `zSign` offsets the folded ply a hair off the exact z = 0 seam line, on
+   * the same side (+z front-ish, −z back-ish) as the face it folds onto, so
+   * the two dog-ears meeting at one physical corner don't coincide. Returns
+   * null when there is no excess anywhere along this edge.
+   */
+  const dogEarFlap = (
+    bnd: { min: Vec2; max: Vec2 },
+    edgeT: number,
+    zSign: number,
+  ): { facets: FormedFacet[]; outline: Vec3[] } | null => {
+    const rows = rowsForHeight(bnd.max.y - bnd.min.y);
+    const grid: { p: Vec3; uv: Vec2 }[][] = [];
+    let maxExcess = 0;
+    for (let j = 0; j <= rows; j++) {
+      const y = bnd.min.y + ((bnd.max.y - bnd.min.y) * j) / rows;
+      const excess = excessHalfWidthAt(y);
+      maxExcess = Math.max(maxExcess, excess);
+      const base = surfaceAt(y, edgeT);
+      const foldDir = base.x >= 0 ? -1 : 1; // toward x = 0, the panel's own centre
+      const outer: Vec3 = { x: base.x, y, z: base.z + zSign * thickness };
+      const inner: Vec3 = { x: base.x + foldDir * excess, y, z: outer.z };
+      grid.push([
+        { p: outer, uv: { x: bnd.min.x, y } },
+        { p: inner, uv: { x: bnd.min.x, y } },
+      ]);
+    }
+    if (maxExcess < DOGEAR_EPS_MM) return null;
+    return { facets: gridToQuads(grid), outline: gridPerimeter(grid) };
+  };
+
   for (const face of roundFaces) {
     const bnd = boundsOf(face.outer.points)!;
     const grid = sampleGrid(bnd, (x, y) => surfaceAt(y, angleOf(x)));
-    out.set(face.id, { face, facets: gridToQuads(grid), outline: gridPerimeter(grid) });
+    const facets = gridToQuads(grid);
+    const outline: Vec3[][] = [gridPerimeter(grid)];
+
+    const t0 = angleOf(bnd.min.x);
+    const t1 = angleOf(bnd.max.x);
+    const midY = (bnd.min.y + bnd.max.y) / 2;
+    const faceZ = surfaceAt(midY, (t0 + t1) / 2).z;
+    const zSign = faceZ === 0 ? 1 : Math.sign(faceZ);
+    if (!isSeamT(t0)) {
+      const flap = dogEarFlap(bnd, t0, zSign);
+      if (flap) {
+        facets.push(...flap.facets);
+        outline.push(flap.outline);
+      }
+    }
+    if (!isSeamT(t1)) {
+      const flap = dogEarFlap(bnd, t1, zSign);
+      if (flap) {
+        facets.push(...flap.facets);
+        outline.push(flap.outline);
+      }
+    }
+
+    out.set(face.id, { face, facets, outline });
   }
 
-  const thickness = 2 * graph.caliper;
   const sealStyle = spec.sealStyle ?? 'fin';
   // girthX0 (t = 0) sits at the seam, and +t runs forward through the
   // round faceRoles in their flat left-to-right order — for the pillow that
@@ -517,7 +619,7 @@ function loftedProfile(
         return { x: base.x + normal.x * thickness + tangent.x * along, z: base.z + normal.z * thickness + tangent.z * along };
       });
     }
-    out.set(face.id, { face, facets: gridToQuads(grid), outline: gridPerimeter(grid) });
+    out.set(face.id, { face, facets: gridToQuads(grid), outline: [gridPerimeter(grid)] });
   }
 
   return out;
@@ -629,7 +731,7 @@ function gussetedPouch(
       const inflated: Vec3 = { x: rp.x, y: rp.y, z: sign * bulge };
       return lerp3(rp, inflated, fill);
     });
-    out.set(face.id, { face, facets: [{ points, uv: face.outer.points }], outline: points });
+    out.set(face.id, { face, facets: [{ points, uv: face.outer.points }], outline: [points] });
   }
 
   for (const face of bases) {
@@ -649,7 +751,7 @@ function gussetedPouch(
       const opened: Vec3 = { x: nx * ovalRadiusX, y: rp.y, z: sign * Math.max(0, nz) * depth };
       return lerp3(rp, opened, fill);
     });
-    out.set(face.id, { face, facets: [{ points, uv: face.outer.points }], outline: points });
+    out.set(face.id, { face, facets: [{ points, uv: face.outer.points }], outline: [points] });
   }
 
   return out;

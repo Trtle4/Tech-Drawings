@@ -128,9 +128,21 @@ if (
   const measuredWidthAtMid = xExtent(midPts);
   const measuredDepthAtMid = 2 * maxAbsZ(midPts);
 
+  // The crimp band's halfDepth in the 3D preview is max(caliper, bagD*0.06),
+  // a deliberate DISPLAY FLOOR — true film thickness draws as a bare outline
+  // with no visible fill (see bag-pillow.ts). measuredCrimpThickness reflects
+  // that floor, not the true caliper, so report both explicitly rather than
+  // comparing the floor against true 2x caliper as if they were meant to
+  // match: they never will, on purpose, and that must not be read as an
+  // error. This floor lives ONLY in formedShape.stations for the 3D preview;
+  // it is never read by dimensions, an outside-dimension toggle, or export.
+  const trueCrimpThickness = 2 * params.caliper;
+  const displayFloorThickness = 2 * Math.max(params.caliper, params.bagD * 0.06);
+
   const checks = [
     { label: 'Crimp band height', measured: measuredCrimpHeight, spec: params.endSeal, specLabel: 'end seal width' },
-    { label: 'Crimp band thickness', measured: measuredCrimpThickness, spec: 2 * params.caliper, specLabel: '2 x caliper' },
+    { label: 'Crimp band thickness (true 2 x caliper)', measured: trueCrimpThickness, spec: trueCrimpThickness, specLabel: 'true 2 x caliper (not what is drawn)' },
+    { label: 'Crimp band thickness (display floor, drawn)', measured: measuredCrimpThickness, spec: displayFloorThickness, specLabel: 'display floor = 2 x max(caliper, bagD*0.06)' },
     { label: 'Width at crimp', measured: measuredWidthAtCrimp, spec: measuredWidthAtMid, specLabel: 'width at midpoint' },
     { label: 'Depth at midpoint', measured: measuredDepthAtMid, spec: params.bagD, specLabel: 'bagD' },
   ];
@@ -180,7 +192,7 @@ if (
     ${witness(crimpTopR.x, crimpTopR.y, crimpTopR.x, crimpThickY)}
     ${arrow(crimpTopL.x, crimpThickY, crimpTopR.x, crimpThickY)}
     ${arrow(crimpTopR.x, crimpThickY, crimpTopL.x, crimpThickY)}
-    ${label((crimpTopL.x + crimpTopR.x) / 2, crimpThickY + fs * 1.3, `t ${measuredCrimpThickness.toFixed(2)} / ${(2 * params.caliper).toFixed(2)}`)}
+    ${label((crimpTopL.x + crimpTopR.x) / 2, crimpThickY + fs * 1.3, `t ${measuredCrimpThickness.toFixed(2)} (display floor ${displayFloorThickness.toFixed(2)}) / true ${trueCrimpThickness.toFixed(2)}`)}
 
     ${witness(midL.x, midL.y, midL.x, midDepthY)}
     ${witness(midR.x, midR.y, midR.x, midDepthY)}

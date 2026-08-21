@@ -327,7 +327,7 @@ describe('gussetedPouch() — SUP bag', () => {
   it('stays bounded near the rigid fold\'s own length as it inflates — the disjoint-flat-frame bug this replaced', () => {
     const { graph, resolved } = setup(bagSup);
     const rigid = foldedFacePoints(resolved, 1);
-    const rigidExtent = extents(new Map([...rigid].map(([id, v]) => [id, { face: v.face, facets: [{ points: v.points, uv: [] }], outline: v.points }])));
+    const rigidExtent = extents(new Map([...rigid].map(([id, v]) => [id, { face: v.face, facets: [{ points: v.points, uv: [] }], outline: [v.points] }])));
     for (const fill of [0, 0.5, 0.75, 1]) {
       const formed = computeFormedShape(graph, resolved, fill);
       const e = extents(formed);

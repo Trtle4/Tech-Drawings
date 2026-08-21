@@ -165,19 +165,21 @@ export function projectFormedFaces(formed: Map<string, FormedFace>, cam: CameraB
       const r = projectRing(points, cam);
       if (r) out.push({ ...r, ply: face.ply });
     }
-    for (let i = 0; i < outline.length; i++) {
-      const a = project(outline[i]!, cam);
-      const b = project(outline[(i + 1) % outline.length]!, cam);
-      out.push({
-        pts: [
-          { x: a.x, y: a.y },
-          { x: b.x, y: b.y },
-        ],
-        depth: (a.depth + b.depth) / 2,
-        shade: 0,
-        ply: face.ply,
-        outline: true,
-      });
+    for (const loop of outline) {
+      for (let i = 0; i < loop.length; i++) {
+        const a = project(loop[i]!, cam);
+        const b = project(loop[(i + 1) % loop.length]!, cam);
+        out.push({
+          pts: [
+            { x: a.x, y: a.y },
+            { x: b.x, y: b.y },
+          ],
+          depth: (a.depth + b.depth) / 2,
+          shade: 0,
+          ply: face.ply,
+          outline: true,
+        });
+      }
     }
   }
   return paintOrder(out);

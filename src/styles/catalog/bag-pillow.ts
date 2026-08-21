@@ -195,10 +195,20 @@ export const bagPillow: StyleDefinition = {
     // is. Scaling the floor off the bag's own depth keeps it legible at any
     // bagD while still reading as clearly, dramatically flatter than the
     // round body.
+    // Shoulder stations (2, 4) hold the depth near-full across most of the
+    // body — PCHIP already gives a smooth curve between any two stations, so
+    // three stations plus PCHIP was still a lens: nothing stopped the profile
+    // falling away toward bagD/2 immediately past the midpoint. Adding a
+    // station 15% of the body span in from each end seal, near bagD/2, gives
+    // the interpolator a flat-ish plateau to hold through the body and only
+    // a short 15%-of-body run to taper through on its way into the crimp —
+    // the interpolator itself is untouched.
     stations: [
       { y: '0', halfDepth: 'max(caliper, bagD*0.06)' },
       { y: 'endSeal', halfDepth: 'max(caliper, bagD*0.06)' },
+      { y: 'endSeal + (bagL - 2*endSeal)*0.15', halfDepth: 'bagD/2*0.92' },
       { y: 'bagL/2', halfDepth: 'bagD/2' },
+      { y: 'bagL - endSeal - (bagL - 2*endSeal)*0.15', halfDepth: 'bagD/2*0.92' },
       { y: 'bagL - endSeal', halfDepth: 'max(caliper, bagD*0.06)' },
       { y: 'bagL', halfDepth: 'max(caliper, bagD*0.06)' },
     ],
