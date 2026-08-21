@@ -209,6 +209,85 @@ const normalize2 = (x: number, z: number): { x: number; z: number } => {
   return l < 1e-9 ? { x: 1, z: 0 } : { x: x / l, z: z / l };
 };
 
+/** Ramanujan's second approximation — accurate to a fraction of a percent for any aspect ratio. */
+function ellipsePerimeter(a: number, b: number): number {
+  if (a <= 0 || b <= 0) return 4 * Math.max(a, b);
+  const h = ((a - b) / (a + b)) ** 2;
+  return Math.PI * (a + b) * (1 + (3 * h) / (10 + Math.sqrt(4 - 3 * h)));
+}
+
+/**
+ * The semi-axis `a` such that an ellipse of semi-axes (a, halfDepth) has
+ * perimeter `targetPerimeter` — i.e. the width a girth-constrained
+ * cross-section spreads to at a given depth. Perimeter grows monotonically
+ * with `a` for fixed `halfDepth`, so bisection is exact enough in a handful
+ * of iterations; at halfDepth = 0 the ellipse is a degenerate line
+ * traversed twice, solved exactly (a = targetPerimeter / 4) rather than by
+ * search.
+ */
+function solveHalfWidthForPerimeter(targetPerimeter: number, halfDepth: number): number {
+  if (halfDepth <= 1e-9) return targetPerimeter / 4;
+  let lo = 1e-9;
+  let hi = targetPerimeter;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (ellipsePerimeter(mid, halfDepth) < targetPerimeter) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+/**
+ * PCHIP tangents (Fritsch-Carlson): C1 continuous, and shape-preserving —
+ * the tangent at a station is exactly zero wherever the data has a local
+ * extremum OR either neighbouring run is flat (an adjacent secant of zero),
+ * which is what keeps a genuinely flat run (two consecutive equal-valued
+ * stations, e.g. a crimp band) flat rather than letting a plain spline bow
+ * it to satisfy curvature elsewhere. Endpoints use the one-sided secant to
+ * their only neighbour, which for THIS engine's stations is typically zero
+ * too (the outermost station usually repeats its neighbour's value).
+ */
+function pchipTangents(ys: number[], vs: number[]): number[] {
+  const n = ys.length;
+  const secant = (i: number): number => {
+    const dy = ys[i + 1]! - ys[i]!;
+    return dy === 0 ? 0 : (vs[i + 1]! - vs[i]!) / dy;
+  };
+  if (n < 2) return ys.map(() => 0);
+  if (n === 2) {
+    const s = secant(0);
+    return [s, s];
+  }
+  const m: number[] = new Array(n);
+  m[0] = secant(0);
+  m[n - 1] = secant(n - 2);
+  for (let i = 1; i < n - 1; i++) {
+    const sPrev = secant(i - 1);
+    const sNext = secant(i);
+    if (sPrev === 0 || sNext === 0 || (sPrev > 0) !== (sNext > 0)) {
+      m[i] = 0;
+    } else {
+      const hPrev = ys[i]! - ys[i - 1]!;
+      const hNext = ys[i + 1]! - ys[i]!;
+      const w1 = 2 * hNext + hPrev;
+      const w2 = hNext + 2 * hPrev;
+      m[i] = (w1 + w2) / (w1 / sPrev + w2 / sNext);
+    }
+  }
+  return m;
+}
+
+/** Cubic Hermite on t in [0, 1], with tangents already scaled to the segment's own span. */
+function hermite(v0: number, v1: number, m0: number, m1: number, t: number): number {
+  const t2 = t * t;
+  const t3 = t2 * t;
+  const h00 = 2 * t3 - 3 * t2 + 1;
+  const h10 = t3 - 2 * t2 + t;
+  const h01 = -2 * t3 + 3 * t2;
+  const h11 = t3 - t2;
+  return h00 * v0 + h10 * m0 + h01 * v1 + h11 * m1;
+}
+
 /**
  * A lofted cross-section, swept along the up-axis. Every face — round or
  * flap — is placed by a closed-form function of its own flat (x, y) and the
@@ -271,15 +350,41 @@ function loftedProfile(
   const paramScope = (graph.meta?.params as Record<string, number> | undefined) ?? {};
   const scope: Scope = { ...paramScope, girth };
   const stations: ResolvedStation[] = spec
-    .stations!.map((s: LoftStationSpec) => ({
-      y: evalExpr(s.y, scope),
-      halfWidth: evalExpr(s.halfWidth, scope),
-      halfDepth: evalExpr(s.halfDepth, scope),
-    }))
+    .stations!.map((s: LoftStationSpec) => {
+      const halfDepth = evalExpr(s.halfDepth, scope);
+      // Omitted halfWidth is DERIVED so the section's own perimeter matches
+      // girth — the material the flat pattern actually provides at every
+      // station, not just an assumed constant. This is what makes a flat
+      // crimp read wider than the round midpoint: the same girth wrapped
+      // around less depth has to spread out further to use it all.
+      const halfWidth = s.halfWidth !== undefined ? evalExpr(s.halfWidth, scope) : solveHalfWidthForPerimeter(girth, halfDepth);
+      return { y: evalExpr(s.y, scope), halfWidth, halfDepth };
+    })
     .sort((a, b) => a.y - b.y);
   const flatRef = stations[0]!;
 
+  // t = 0 sits at girthX0 by construction — the flat pattern's own left
+  // edge, i.e. the seam on a wrap-formed tube (the two web edges meet
+  // there). Sampled with NO phase shift, the seam lands at the ellipse's
+  // own widest point (its "3 o'clock"), which is the tube's SIDE, not its
+  // back — wrong for a fin-seal bag, where the seam sits diametrically
+  // opposite the panel that never touches it, i.e. mid-back. girthPhaseDeg
+  // rotates the whole cross-section so t = 0 lands wherever the style says
+  // the seam physically is.
+  const phase = ((spec.girthPhaseDeg ?? 0) * Math.PI) / 180;
   const angleOf = (x: number) => (x - girthX0) / girth; // t, unclamped — can run past [0, 1]
+
+  // C1 (PCHIP) interpolation, not linear: a filled bag's depth profile is a
+  // smooth curve, and linear segments between stations put a visible kink at
+  // every one — most obviously at the midpoint, the single most visible
+  // point on the profile. PCHIP also keeps a genuinely flat run flat (its
+  // tangent is exactly zero wherever the data doesn't call for a slope,
+  // which is exactly the crimp bands, since consecutive equal-valued
+  // stations have a zero secant either side) rather than bowing it, which a
+  // naive Catmull-Rom-style spline would do.
+  const ys = stations.map((s) => s.y);
+  const widthTangents = pchipTangents(ys, stations.map((s) => s.halfWidth));
+  const depthTangents = pchipTangents(ys, stations.map((s) => s.halfDepth));
 
   const stationAt = (y: number): { halfWidth: number; halfDepth: number } => {
     let i = 0;
@@ -287,8 +392,11 @@ function loftedProfile(
     const s0 = stations[i]!;
     const s1 = stations[i + 1]!;
     const span = s1.y - s0.y || 1;
-    const frac = Math.max(0, Math.min(1, (y - s0.y) / span));
-    return { halfWidth: lerp(s0.halfWidth, s1.halfWidth, frac), halfDepth: lerp(s0.halfDepth, s1.halfDepth, frac) };
+    const t = Math.max(0, Math.min(1, (y - s0.y) / span));
+    return {
+      halfWidth: hermite(s0.halfWidth, s1.halfWidth, widthTangents[i]! * span, widthTangents[i + 1]! * span, t),
+      halfDepth: hermite(s0.halfDepth, s1.halfDepth, depthTangents[i]! * span, depthTangents[i + 1]! * span, t),
+    };
   };
 
   /** The lofted surface point at girth-fraction t and length y, blended by fill. */
@@ -296,13 +404,13 @@ function loftedProfile(
     const st = stationAt(y);
     const halfWidth = lerp(flatRef.halfWidth, st.halfWidth, fill);
     const halfDepth = lerp(flatRef.halfDepth, st.halfDepth, fill);
-    const angle = t * 2 * Math.PI;
+    const angle = t * 2 * Math.PI + phase;
     return { x: halfWidth * Math.cos(angle), z: halfDepth * Math.sin(angle) };
   };
 
   /** The FLAT reference cross-section alone, at girth-fraction t — fixed, no y or fill. */
   const flatAt = (t: number): { x: number; z: number } => {
-    const angle = t * 2 * Math.PI;
+    const angle = t * 2 * Math.PI + phase;
     return { x: flatRef.halfWidth * Math.cos(angle), z: flatRef.halfDepth * Math.sin(angle) };
   };
 

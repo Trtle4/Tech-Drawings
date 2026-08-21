@@ -230,12 +230,20 @@ export interface ExtraSeedSpec {
  * station whose `halfDepth` is small (the film's own half-thickness) rather
  * than a different code path — same shape function, different numbers.
  * `girth` (the round faces' combined flat-x extent) is available in these
- * expressions alongside the style's own params, so a flat crimp can be
- * written as `halfWidth: 'girth/2'`.
+ * expressions alongside the style's own params.
+ *
+ * `halfWidth` is optional. Omit it and the engine DERIVES it from `halfDepth`
+ * so the cross-section's own perimeter matches `girth` — the material
+ * actually available at that point, same as the flat pattern promises for
+ * every station, not just the flat one. This is what makes the bag flare
+ * WIDER approaching a flat crimp than it is at a round midpoint: a fixed
+ * girth wrapped around a shallow section only reaches its full width by
+ * spreading out, the way real film does. Give an explicit `halfWidth` only
+ * to override that derivation for a station that is not girth-constrained.
  */
 export interface LoftStationSpec {
   y: Expr;
-  halfWidth: Expr;
+  halfWidth?: Expr;
   halfDepth: Expr;
 }
 
@@ -292,6 +300,17 @@ export interface FormedShapeSpec {
   flapFold?: 'left' | 'right';
   /** `lofted_profile` only: how flap faces are placed. Defaults to 'fin'. */
   sealStyle?: 'fin' | 'lap';
+  /**
+   * `lofted_profile` only: rotates where girth-fraction t = 0 (the seam)
+   * lands on the cross-section, in degrees. Defaults to 0 — the seam at the
+   * ellipse's own widest point, i.e. the flat pattern's own left edge — which
+   * is wrong for a wrap-formed tube: the seam is where the flat web's TWO
+   * edges meet, diametrically opposite the panel that does not touch it. For
+   * a fin-seal bag laid out fin | back-left | front | back-right | fin, that
+   * places the seam at -90 (or 90, sign is a fold-direction choice) so it
+   * lands mid-BACK rather than at the tube's side edge.
+   */
+  girthPhaseDeg?: number;
   /**
    * How full the pack is, 0 to 1. Drives how far the section rounds out.
    * Presentation only; it never affects the dieline.

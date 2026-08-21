@@ -114,30 +114,31 @@ export const bagPillow: StyleDefinition = {
       { id: 'end_top', size: 'endSeal' },
     ],
     cells: [
-      // ply: 1 on every fin cell — folded flat, the fin is a real layer
-      // sitting ON TOP of whichever panel it's folded against, not merely
-      // adjacent to it. Depth alone does not reliably resolve that: near
-      // the seam a round panel's own curvature can bulge closer to camera
-      // than the flat fin does, in some views, at some points along its
-      // length. ply is the style's explicit statement of which one is
-      // physically on top, and paintOrder honours it over depth.
-      { row: 'body', col: 'fin_l', role: 'fin_left', kind: 'seal', ply: 1 },
+      // The fin sits at mid-back (girthPhaseDeg, below) folded flat against
+      // back_panel_left, so ordinary depth sort is now correct on its own:
+      // genuinely behind front_panel from the front (properly hidden),
+      // genuinely nearest camera from the back (properly visible). ply
+      // would force it to draw on top unconditionally, which was needed
+      // when the fin sat at the tube's side edge with an ambiguous depth
+      // relationship to the panel beside it, but is wrong now — it would
+      // show the fin THROUGH the front panel that is supposed to hide it.
+      { row: 'body', col: 'fin_l', role: 'fin_left', kind: 'seal' },
       { row: 'body', col: 'back_l', role: 'back_panel_left', kind: 'panel' },
       { row: 'body', col: 'front', role: 'front_panel', kind: 'panel', base: true },
       { row: 'body', col: 'back_r', role: 'back_panel_right', kind: 'panel' },
-      { row: 'body', col: 'fin_r', role: 'fin_right', kind: 'seal', ply: 1 },
+      { row: 'body', col: 'fin_r', role: 'fin_right', kind: 'seal' },
 
-      { row: 'end_bottom', col: 'fin_l', role: 'fin_left_end_bottom', kind: 'seal', ply: 1 },
+      { row: 'end_bottom', col: 'fin_l', role: 'fin_left_end_bottom', kind: 'seal' },
       { row: 'end_bottom', col: 'back_l', role: 'back_left_end_bottom', kind: 'seal' },
       { row: 'end_bottom', col: 'front', role: 'front_end_bottom', kind: 'seal' },
       { row: 'end_bottom', col: 'back_r', role: 'back_right_end_bottom', kind: 'seal' },
-      { row: 'end_bottom', col: 'fin_r', role: 'fin_right_end_bottom', kind: 'seal', ply: 1 },
+      { row: 'end_bottom', col: 'fin_r', role: 'fin_right_end_bottom', kind: 'seal' },
 
-      { row: 'end_top', col: 'fin_l', role: 'fin_left_end_top', kind: 'seal', ply: 1 },
+      { row: 'end_top', col: 'fin_l', role: 'fin_left_end_top', kind: 'seal' },
       { row: 'end_top', col: 'back_l', role: 'back_left_end_top', kind: 'seal' },
       { row: 'end_top', col: 'front', role: 'front_end_top', kind: 'seal' },
       { row: 'end_top', col: 'back_r', role: 'back_right_end_top', kind: 'seal' },
-      { row: 'end_top', col: 'fin_r', role: 'fin_right_end_top', kind: 'seal', ply: 1 },
+      { row: 'end_top', col: 'fin_r', role: 'fin_right_end_top', kind: 'seal' },
     ],
     boundaries: [
       // Lay-flat: the tube's two side edges fold right over.
@@ -173,10 +174,18 @@ export const bagPillow: StyleDefinition = {
     ],
     flapFold: 'left',
     sealStyle: 'fin',
-    // halfWidth is bagW/2 at every station, flat crimp and midpoint alike —
-    // side to side, the bag is exactly the front panel's own width the whole
-    // way down (matching the rigid lay-flat fold's own W x L x fin extent);
-    // only halfDepth (front to back) opens up toward the midpoint.
+    // The blank wraps fin | back-left | front | back-right | fin, so the
+    // seam (t = 0, girthX0) is where the web's two edges meet — physically
+    // mid-BACK, diametrically opposite front_panel's own centre, not the
+    // tube's side. -90 rotates the cross-section so t = 0 lands there: from
+    // the front the fin sits exactly on the centreline, invisible under the
+    // panel it's folded flat against; from the back it's the centre line.
+    girthPhaseDeg: -90,
+    // halfWidth is omitted at every station — the engine derives it so the
+    // section's own perimeter matches girth, which is what makes the crimp
+    // read WIDER than the round midpoint: the same fixed length of film
+    // wrapped around less depth has to spread further sideways to use it
+    // all, same as a real flattened tube does.
     //
     // The crimp's own halfDepth is max(caliper, bagD*0.06), not caliper
     // alone: a real crimped seal is a couple of plies pressed together, not
@@ -187,11 +196,11 @@ export const bagPillow: StyleDefinition = {
     // bagD while still reading as clearly, dramatically flatter than the
     // round body.
     stations: [
-      { y: '0', halfWidth: 'bagW/2', halfDepth: 'max(caliper, bagD*0.06)' },
-      { y: 'endSeal', halfWidth: 'bagW/2', halfDepth: 'max(caliper, bagD*0.06)' },
-      { y: 'bagL/2', halfWidth: 'bagW/2', halfDepth: 'bagD/2' },
-      { y: 'bagL - endSeal', halfWidth: 'bagW/2', halfDepth: 'max(caliper, bagD*0.06)' },
-      { y: 'bagL', halfWidth: 'bagW/2', halfDepth: 'max(caliper, bagD*0.06)' },
+      { y: '0', halfDepth: 'max(caliper, bagD*0.06)' },
+      { y: 'endSeal', halfDepth: 'max(caliper, bagD*0.06)' },
+      { y: 'bagL/2', halfDepth: 'bagD/2' },
+      { y: 'bagL - endSeal', halfDepth: 'max(caliper, bagD*0.06)' },
+      { y: 'bagL', halfDepth: 'max(caliper, bagD*0.06)' },
     ],
     fill: '0.85',
   },

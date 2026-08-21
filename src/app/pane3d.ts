@@ -99,24 +99,26 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
     const seamWidth = 0.4 / view.zoom;
     const outlineWidth = 0.7 / view.zoom;
     svg.setAttribute('viewBox', `0 0 ${vp.width} ${vp.height}`);
-    // Two passes, not one interleaved paint-order pass: an outline drawn in
-    // strict depth order against fill facets from OTHER faces can get
-    // partly painted over by a nearby facet at a slightly nearer average
-    // depth, breaking a real edge into dashes. Drawn after every fill, an
-    // outline always reads as a complete line.
-    const fillPath = (f: ProjectedFacet) => {
-      const screenPts = f.pts.map((p) => modelToScreen(p, view, vp));
-      const opacity = (0.55 + 0.45 * f.shade).toFixed(3);
-      return (
-        `<path d="${d(screenPts)} Z" fill="var(--board)" fill-opacity="${opacity}" ` +
-        `stroke="var(--board)" stroke-opacity="${opacity}" stroke-width="${seamWidth.toFixed(3)}" stroke-linejoin="round"/>`
-      );
-    };
-    const outlinePath = (f: ProjectedFacet) => {
-      const screenPts = f.pts.map((p) => modelToScreen(p, view, vp));
-      return `<path d="${d(screenPts)} Z" fill="none" stroke="var(--board-edge)" stroke-width="${outlineWidth.toFixed(3)}" stroke-linejoin="round"/>`;
-    };
-    svg.innerHTML = [...ordered.filter((f) => !f.outline).map(fillPath), ...ordered.filter((f) => f.outline).map(outlinePath)].join('');
+    // One interleaved paint-order pass: a boundary on the far side of the
+    // loft (the back seam, viewed from the front) must be genuinely
+    // occludable by a nearer face's fill, or it draws through regardless of
+    // camera angle. Each outline edge is its own short segment (see
+    // projectFormedFaces), sorted by its own local depth, so this is
+    // accurate along the whole boundary rather than an average that can
+    // lose locally even where a segment should clearly win.
+    svg.innerHTML = ordered
+      .map((f) => {
+        const screenPts = f.pts.map((p) => modelToScreen(p, view, vp));
+        if (f.outline) {
+          return `<path d="${d(screenPts)}" fill="none" stroke="var(--board-edge)" stroke-width="${outlineWidth.toFixed(3)}" stroke-linecap="round"/>`;
+        }
+        const opacity = (0.55 + 0.45 * f.shade).toFixed(3);
+        return (
+          `<path d="${d(screenPts)} Z" fill="var(--board)" fill-opacity="${opacity}" ` +
+          `stroke="var(--board)" stroke-opacity="${opacity}" stroke-width="${seamWidth.toFixed(3)}" stroke-linejoin="round"/>`
+        );
+      })
+      .join('');
   }
 
   // -- interaction: left-drag orbits, shift+left-drag or middle-drag pans, wheel zooms --

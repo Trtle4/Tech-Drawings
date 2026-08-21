@@ -147,9 +147,16 @@ function projectRing(points: Vec3[], cam: CameraBasis): { pts: Vec2[]; depth: nu
  * (and self-occludes via paint order) the way a curved surface should,
  * instead of being one flat-shaded polygon standing in for the whole panel.
  * A rigid, flat face — still exactly one facet — renders identically to
- * before this existed. Each face's own `outline` is projected too, tagged
- * so the renderer draws it as a stroke-only line at the same paint-order
- * position as its facets, rather than a mesh line at every facet seam.
+ * before this existed.
+ *
+ * Each face's own `outline` is projected too, but as many short EDGE
+ * segments rather than one path for the whole loop — a face's boundary can
+ * sweep a wide depth range along its own length (the seam down a curved
+ * bag's back runs from near the crimp to deep at the midpoint), and a
+ * single average-depth sort key for the whole loop can lose locally even
+ * where a segment should clearly win, painting real edges away in patches.
+ * Per-segment depth keeps that sort as local as the fill facets already
+ * get.
  */
 export function projectFormedFaces(formed: Map<string, FormedFace>, cam: CameraBasis): ProjectedFacet[] {
   const out: ProjectedFacet[] = [];
@@ -158,8 +165,20 @@ export function projectFormedFaces(formed: Map<string, FormedFace>, cam: CameraB
       const r = projectRing(points, cam);
       if (r) out.push({ ...r, ply: face.ply });
     }
-    const r = projectRing(outline, cam);
-    if (r) out.push({ ...r, ply: face.ply, outline: true });
+    for (let i = 0; i < outline.length; i++) {
+      const a = project(outline[i]!, cam);
+      const b = project(outline[(i + 1) % outline.length]!, cam);
+      out.push({
+        pts: [
+          { x: a.x, y: a.y },
+          { x: b.x, y: b.y },
+        ],
+        depth: (a.depth + b.depth) / 2,
+        shade: 0,
+        ply: face.ply,
+        outline: true,
+      });
+    }
   }
   return paintOrder(out);
 }

@@ -6,7 +6,7 @@
  */
 import type { GeometryGraph, ResolvedGeometry, Vec2 } from '../geometry/types.js';
 import { computeFormedShape } from '../geometry/formedShape.js';
-import { type CameraBasis, type ProjectedFacet, projectFormedFaces } from './iso.js';
+import { type CameraBasis, projectFormedFaces } from './iso.js';
 
 export interface FormedSvgOptions {
   /** Overrides how full the pack is, 0 to 1. Defaults to the style's own formedShape.fill. */
@@ -58,22 +58,26 @@ export function renderFormedSvg(
   // fin) is a separate, unfilled, outline-coloured stroke on top.
   const seamWidth = Math.max(w, h) * 0.0015;
   const outlineWidth = Math.max(w, h) * 0.0025;
-  // Two passes, not one interleaved paint-order pass: an outline is a thin
-  // line, and if it were painted in strict depth order against fill facets
-  // from OTHER faces, a nearby facet at a slightly nearer average depth can
-  // paint over part of it, breaking a real edge into dashes. Outlines drawn
-  // after every fill always read as complete lines; the (rare, minor) cost
-  // is an outline for a face that is otherwise fully hidden showing anyway.
-  const fillPath = (f: ProjectedFacet) => {
-    const opacity = (0.55 + 0.45 * f.shade).toFixed(3);
-    return (
-      `<path d="${d(f.pts)} Z" fill="var(--board)" fill-opacity="${opacity}" ` +
-      `stroke="var(--board)" stroke-opacity="${opacity}" stroke-width="${seamWidth.toFixed(3)}" stroke-linejoin="round"/>`
-    );
-  };
-  const outlinePath = (f: ProjectedFacet) =>
-    `<path d="${d(f.pts)} Z" fill="none" stroke="var(--board-edge)" stroke-width="${outlineWidth.toFixed(3)}" stroke-linejoin="round"/>`;
-  const body = [...ordered.filter((f) => !f.outline).map(fillPath), ...ordered.filter((f) => f.outline).map(outlinePath)].join('\n');
+  // One interleaved paint-order pass: a face on the far side of the loft
+  // (the back seam, viewed from the front) must be genuinely occludable by
+  // a nearer face's fill, or a boundary that should be hidden — the panel
+  // join opposite whatever the camera faces — draws through it regardless
+  // of camera angle. Each outline edge is its own short segment (see
+  // projectFormedFaces), sorted by its own local depth, so this is accurate
+  // along the whole boundary rather than an average that can lose locally
+  // even where a segment should clearly win.
+  const body = ordered
+    .map((f) => {
+      if (f.outline) {
+        return `<path d="${d(f.pts)}" fill="none" stroke="var(--board-edge)" stroke-width="${outlineWidth.toFixed(3)}" stroke-linecap="round"/>`;
+      }
+      const opacity = (0.55 + 0.45 * f.shade).toFixed(3);
+      return (
+        `<path d="${d(f.pts)} Z" fill="var(--board)" fill-opacity="${opacity}" ` +
+        `stroke="var(--board)" stroke-opacity="${opacity}" stroke-width="${seamWidth.toFixed(3)}" stroke-linejoin="round"/>`
+      );
+    })
+    .join('\n');
 
   return `<svg ${svgAttrs} viewBox="${minX - pad} ${minY - pad} ${w + pad * 2} ${h + pad * 2}" xmlns="http://www.w3.org/2000/svg">
 ${body}

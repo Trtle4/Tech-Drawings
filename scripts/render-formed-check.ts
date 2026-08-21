@@ -16,7 +16,9 @@ import { fileURLToPath } from 'node:url';
 
 import { STYLES, compileStyle } from '../src/styles/index.js';
 import { resolveGeometry } from '../src/geometry/resolve.js';
-import { cameraBasis } from '../src/render/iso.js';
+import { boundsOf } from '../src/geometry/math.js';
+import { computeFormedShape } from '../src/geometry/formedShape.js';
+import { cameraBasis, project } from '../src/render/iso.js';
 import { renderFormedSvg } from '../src/render/formedSvg.js';
 import { DEFAULT_ORBIT } from '../src/app/state.js';
 
@@ -73,6 +75,134 @@ for (const view of VIEWS) {
   const outPath = resolvePath(outDir, `${styleId}.${view.name}.png`);
   await page.screenshot({ path: outPath });
   console.log(`${view.name.padEnd(16)} -> ${outPath}`);
+}
+
+// ---------------------------------------------------------------------------
+// A fifth, dimensioned view: the numbers a picture alone can't verify.
+// ---------------------------------------------------------------------------
+//
+// Numeric tests can pass and a render can still be lying — the only way to
+// catch that is to put the same numbers ON the picture, measured from the
+// actual formed geometry rather than assumed from the spec, so a mismatch is
+// visible rather than requiring a second script to notice. Role names below
+// are the pillow bag's own vocabulary; this block only runs when they're
+// all present, so it degrades to a no-op for styles it doesn't understand
+// rather than guessing.
+
+const params = (compiled.graph.meta?.params as Record<string, number>) ?? {};
+const byRole = new Map(resolved.faces.map((f) => [f.role, f]));
+const bodyRoles = ['front_panel', 'back_panel_left', 'back_panel_right'];
+const crimpCapRoles = ['front_end_bottom', 'back_left_end_bottom', 'back_right_end_bottom'];
+
+if (
+  bodyRoles.every((r) => byRole.has(r)) &&
+  crimpCapRoles.every((r) => byRole.has(r)) &&
+  'endSeal' in params &&
+  'caliper' in params &&
+  'bagD' in params &&
+  'bagL' in params
+) {
+  const formed = computeFormedShape(compiled.graph, resolved, 1);
+  const pointsOf = (role: string) => formed.get(byRole.get(role)!.id)!.facets.flatMap((f) => f.points);
+  const bodyPoints = bodyRoles.flatMap(pointsOf);
+  // The crimp cap faces (y 0..endSeal) are SEPARATE faces from the round
+  // body (y endSeal..bagL-endSeal) — measuring "at the crimp" from the body
+  // points alone finds nothing there at all, since the body doesn't reach
+  // that far.
+  const crimpPoints = crimpCapRoles.flatMap(pointsOf);
+  const near = <T extends { y: number }>(pts: T[], y: number, tol = 1) => pts.filter((p) => Math.abs(p.y - y) < tol);
+  const xExtent = (pts: { x: number }[]) => Math.max(...pts.map((p) => p.x)) - Math.min(...pts.map((p) => p.x));
+  const maxAbsZ = (pts: { z: number }[]) => Math.max(...pts.map((p) => Math.abs(p.z)));
+
+  // Crimp band height: a grid fact, independent of the loft — the flat
+  // pattern's own y-extent for the crimp cap cell, not something the 3D
+  // engine could get wrong without also breaking the dieline.
+  const crimpBnd = boundsOf(byRole.get('front_end_bottom')!.outer.points)!;
+  const measuredCrimpHeight = crimpBnd.max.y - crimpBnd.min.y;
+
+  const midY = params.bagL / 2;
+  const crimpPts = near(crimpPoints, crimpBnd.min.y, 1);
+  const midPts = near(bodyPoints, midY, 1);
+  const measuredCrimpThickness = 2 * maxAbsZ(crimpPts);
+  const measuredWidthAtCrimp = xExtent(crimpPts);
+  const measuredWidthAtMid = xExtent(midPts);
+  const measuredDepthAtMid = 2 * maxAbsZ(midPts);
+
+  const checks = [
+    { label: 'Crimp band height', measured: measuredCrimpHeight, spec: params.endSeal, specLabel: 'end seal width' },
+    { label: 'Crimp band thickness', measured: measuredCrimpThickness, spec: 2 * params.caliper, specLabel: '2 x caliper' },
+    { label: 'Width at crimp', measured: measuredWidthAtCrimp, spec: measuredWidthAtMid, specLabel: 'width at midpoint' },
+    { label: 'Depth at midpoint', measured: measuredDepthAtMid, spec: params.bagD, specLabel: 'bagD' },
+  ];
+
+  console.log('\ndimensioned check —', styleId);
+  for (const c of checks) console.log(`  ${c.label}: measured ${c.measured.toFixed(2)}mm vs ${c.specLabel} ${c.spec.toFixed(2)}mm`);
+
+  const cam = cameraBasis(upAxis, Math.PI / 2, 0);
+  const sideSvg = renderFormedSvg(compiled.graph, resolved, cam, { svgAttrs: 'id="dimbase"' });
+  const vb = /viewBox="([^"]+)"/.exec(sideSvg)![1]!.split(' ').map(Number) as [number, number, number, number];
+  const [vx, vy, vw, vh] = vb;
+
+  const p = (v: { x: number; y: number; z: number }) => project(v, cam);
+  const crimpTopL = p({ x: 0, y: crimpBnd.min.y, z: -measuredCrimpThickness / 2 });
+  const crimpTopR = p({ x: 0, y: crimpBnd.min.y, z: measuredCrimpThickness / 2 });
+  const crimpBotY = p({ x: 0, y: crimpBnd.max.y, z: 0 }).y;
+  const crimpTopY = p({ x: 0, y: crimpBnd.min.y, z: 0 }).y;
+  const midL = p({ x: 0, y: midY, z: -measuredDepthAtMid / 2 });
+  const midR = p({ x: 0, y: midY, z: measuredDepthAtMid / 2 });
+
+  const dimStroke = '#c0392b';
+  const arrow = (x1: number, y1: number, x2: number, y2: number) => {
+    const ang = Math.atan2(y2 - y1, x2 - x1);
+    const s = vw * 0.012;
+    const mk = (a: number) => `L ${(x2 - s * Math.cos(ang - a)).toFixed(2)} ${(y2 - s * Math.sin(ang - a)).toFixed(2)}`;
+    return `<path d="M ${x1.toFixed(2)} ${y1.toFixed(2)} L ${x2.toFixed(2)} ${y2.toFixed(2)}" stroke="${dimStroke}" stroke-width="${(vw * 0.0018).toFixed(3)}" fill="none"/>
+    <path d="M ${x2.toFixed(2)} ${y2.toFixed(2)} ${mk(0.4)} M ${x2.toFixed(2)} ${y2.toFixed(2)} ${mk(-0.4)}" stroke="${dimStroke}" stroke-width="${(vw * 0.0018).toFixed(3)}" fill="none" stroke-linecap="round"/>`;
+  };
+  const witness = (x1: number, y1: number, x2: number, y2: number) =>
+    `<path d="M ${x1.toFixed(2)} ${y1.toFixed(2)} L ${x2.toFixed(2)} ${y2.toFixed(2)}" stroke="${dimStroke}" stroke-width="${(vw * 0.0008).toFixed(3)}" stroke-dasharray="${(vw * 0.004).toFixed(2)},${(vw * 0.004).toFixed(2)}"/>`;
+  const fs = vw * 0.022;
+  const label = (x: number, y: number, text: string, anchor = 'middle') =>
+    `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" font-size="${fs.toFixed(2)}" font-family="monospace" fill="${dimStroke}" text-anchor="${anchor}">${text}</text>`;
+
+  const crimpHeightX = vx + vw * 0.14;
+  const crimpThickY = crimpBotY + vh * 0.05;
+  const midDepthY = midL.y - vh * 0.045;
+
+  const overlay = `
+    ${witness(crimpTopL.x, crimpTopY, crimpHeightX, crimpTopY)}
+    ${witness(crimpTopL.x, crimpBotY, crimpHeightX, crimpBotY)}
+    ${arrow(crimpHeightX, crimpTopY, crimpHeightX, crimpBotY)}
+    ${arrow(crimpHeightX, crimpBotY, crimpHeightX, crimpTopY)}
+    ${label(crimpHeightX - vw * 0.012, (crimpTopY + crimpBotY) / 2, `${measuredCrimpHeight.toFixed(1)} / ${params.endSeal.toFixed(1)}`, 'end')}
+
+    ${witness(crimpTopL.x, crimpTopL.y, crimpTopL.x, crimpThickY)}
+    ${witness(crimpTopR.x, crimpTopR.y, crimpTopR.x, crimpThickY)}
+    ${arrow(crimpTopL.x, crimpThickY, crimpTopR.x, crimpThickY)}
+    ${arrow(crimpTopR.x, crimpThickY, crimpTopL.x, crimpThickY)}
+    ${label((crimpTopL.x + crimpTopR.x) / 2, crimpThickY + fs * 1.3, `t ${measuredCrimpThickness.toFixed(2)} / ${(2 * params.caliper).toFixed(2)}`)}
+
+    ${witness(midL.x, midL.y, midL.x, midDepthY)}
+    ${witness(midR.x, midR.y, midR.x, midDepthY)}
+    ${arrow(midL.x, midDepthY, midR.x, midDepthY)}
+    ${arrow(midR.x, midDepthY, midL.x, midDepthY)}
+    ${label((midL.x + midR.x) / 2, midDepthY - fs * 0.6, `depth ${measuredDepthAtMid.toFixed(1)} / ${params.bagD.toFixed(1)}`)}
+
+    <g font-family="monospace" font-size="${fs.toFixed(2)}" fill="${dimStroke}">
+      <text x="${(vx + vw * 0.03).toFixed(2)}" y="${(vy + vh * 0.06).toFixed(2)}">width @ crimp:    ${measuredWidthAtCrimp.toFixed(1)} mm</text>
+      <text x="${(vx + vw * 0.03).toFixed(2)}" y="${(vy + vh * 0.06 + fs * 1.4).toFixed(2)}">width @ midpoint: ${measuredWidthAtMid.toFixed(1)} mm</text>
+      <text x="${(vx + vw * 0.03).toFixed(2)}" y="${(vy + vh * 0.06 + fs * 2.8).toFixed(2)}">flare:            ${(measuredWidthAtCrimp - measuredWidthAtMid).toFixed(1)} mm wider at crimp</text>
+    </g>`;
+
+  const dimSvg = sideSvg.replace('</svg>', `${overlay}\n</svg>`).replace('<svg id="dimbase"', '<svg width="820" height="820" id="dimbase"');
+  const html = `<!doctype html><html><head><style>${THEME}
+    html,body{margin:0;background:var(--panel-bg,#f4f1ea);display:flex;align-items:center;justify-content:center;height:100%;}
+  </style></head><body>${dimSvg}</body></html>`;
+  await page.setContent(html);
+  await page.waitForTimeout(50);
+  const outPath = resolvePath(outDir, `${styleId}.dimensioned.png`);
+  await page.screenshot({ path: outPath });
+  console.log(`\n${'dimensioned'.padEnd(16)} -> ${outPath}`);
 }
 
 await browser.close();
