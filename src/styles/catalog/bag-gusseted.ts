@@ -140,17 +140,44 @@ export const bagGusseted: StyleDefinition = {
     ],
   },
 
-  // Declared, not consumed. Same tube, but the gussets set the depth directly
-  // rather than the section having to find it.
+  // Same lofted-cross-section engine as the pillow bag (see formedShape.ts
+  // and bag-pillow.ts) — a girth-conserving ellipse swept along the length,
+  // flat crimp at each end, out to bagD/2 at the middle. The gussets are not
+  // a special case: they are simply more round faceRoles, spanning a wider
+  // share of the same girth, so the SAME station list, phase, dog-ear
+  // folding and crimp treatment apply with no bag-specific geometry code.
   formedShape: {
-    kind: 'tube',
+    kind: 'lofted_profile',
     faceRoles: [
-      'front_panel', 'back_panel_left', 'back_panel_right',
-      'gusset_left_front', 'gusset_left_back', 'gusset_right_front', 'gusset_right_back',
+      'front_panel', 'front_end_bottom', 'front_end_top',
+      'back_panel_left', 'back_left_end_bottom', 'back_left_end_top',
+      'back_panel_right', 'back_right_end_bottom', 'back_right_end_top',
+      'gusset_left_front', 'gusset_left_front_end_bottom', 'gusset_left_front_end_top',
+      'gusset_left_back', 'gusset_left_back_end_bottom', 'gusset_left_back_end_top',
+      'gusset_right_front', 'gusset_right_front_end_bottom', 'gusset_right_front_end_top',
+      'gusset_right_back', 'gusset_right_back_end_bottom', 'gusset_right_back_end_top',
     ],
-    flatFaceRoles: ['fin_left', 'fin_right'],
+    flapFaceRoles: [
+      'fin_left', 'fin_left_end_bottom', 'fin_left_end_top',
+      'fin_right', 'fin_right_end_bottom', 'fin_right_end_top',
+    ],
+    flapFold: 'left',
+    sealStyle: 'fin',
+    // Front sits at the physical centre of the girth path regardless of how
+    // many gusset panels lie between it and the seam — the layout is
+    // symmetric front-to-back, so the seam is always exactly half the girth
+    // away from front-centre. Same -90 as the pillow.
+    girthPhaseDeg: -90,
+    stations: [
+      { y: '0', halfDepth: 'max(caliper, bagD*0.06)' },
+      { y: 'endSeal', halfDepth: 'max(caliper, bagD*0.06)' },
+      { y: 'endSeal + (bagL - 2*endSeal)*0.15', halfDepth: 'bagD/2*0.92' },
+      { y: 'bagL/2', halfDepth: 'bagD/2' },
+      { y: 'bagL - endSeal - (bagL - 2*endSeal)*0.15', halfDepth: 'bagD/2*0.92' },
+      { y: 'bagL - endSeal', halfDepth: 'max(caliper, bagD*0.06)' },
+      { y: 'bagL', halfDepth: 'max(caliper, bagD*0.06)' },
+    ],
     fill: '0.8',
-    params: { depth: 'bagD' },
   },
 
   seals: [

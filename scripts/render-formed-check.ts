@@ -122,7 +122,14 @@ if (
 
   const midY = params.bagL / 2;
   const crimpPts = near(crimpPoints, crimpBnd.min.y, 1);
-  const midPts = near(bodyPoints, midY, 1);
+  // The row grid's spacing depends on each style's own body height (see
+  // rowsForHeight in formedShape.ts), so a fixed tolerance can miss the
+  // nearest sampled row entirely for a style whose body doesn't divide it
+  // evenly (it did, by coincidence, for the pillow). Snap to whichever
+  // sampled y is actually closest to the target instead of guessing a
+  // tolerance wide enough for every style's row spacing.
+  const nearestY = bodyPoints.reduce((best, p) => (Math.abs(p.y - midY) < Math.abs(best - midY) ? p.y : best), bodyPoints[0]?.y ?? midY);
+  const midPts = near(bodyPoints, nearestY, 1e-6);
   const measuredCrimpThickness = 2 * maxAbsZ(crimpPts);
   const measuredWidthAtCrimp = xExtent(crimpPts);
   const measuredWidthAtMid = xExtent(midPts);

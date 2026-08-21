@@ -6,6 +6,7 @@ import { bagSup } from '../../styles/catalog/bag-sup.js';
 import { slitCornerTray } from '../../styles/catalog/slit-corner-tray.js';
 import { resolveGeometry } from '../resolve.js';
 import { foldedFacePoints } from '../fold.js';
+import { boundsOf } from '../math.js';
 import { computeFormedShape, hasFormedShape, type FormedFace } from '../formedShape.js';
 import type { Vec2, Vec3 } from '../types.js';
 import type { FormedShapeSpec, StyleDefinition } from '../../styles/schema.js';
@@ -75,41 +76,9 @@ describe('computeFormedShape falls back to the rigid fold when there is nothing 
   });
 });
 
-describe.each([['gusseted', bagGusseted]] as const)('tube() — %s bag', (_name, def) => {
-  it('leaves flatFaceRoles faces (seals, fin) exactly at the rigid fold, for every fill', () => {
-    const { graph, resolved } = setup(def);
-    const spec = graph.formedShape as FormedShapeSpec;
-    const flatRoles = new Set(spec.flatFaceRoles ?? []);
-    const rigid = foldedFacePoints(resolved, 1);
-    for (const fill of [0, 0.5, 1]) {
-      const formed = computeFormedShape(graph, resolved, fill);
-      for (const face of resolved.faces) {
-        if (!flatRoles.has(face.role)) continue;
-        const formedPoints = allPoints(formed.get(face.id)!);
-        const rigidFace = rigid.get(face.id)!;
-        expect(formedPoints).toHaveLength(rigidFace.points.length);
-        for (let i = 0; i < formedPoints.length; i++) {
-          expect(formedPoints[i]!.x).toBeCloseTo(rigidFace.points[i]!.x, 9);
-          expect(formedPoints[i]!.y).toBeCloseTo(rigidFace.points[i]!.y, 9);
-          expect(formedPoints[i]!.z).toBeCloseTo(rigidFace.points[i]!.z, 9);
-        }
-      }
-    }
-  });
-
-  it('flattens the round panels to z = 0 at fill = 0', () => {
-    const { graph, resolved } = setup(def);
-    const spec = graph.formedShape as FormedShapeSpec;
-    const roundRoles = new Set(spec.faceRoles ?? []);
-    const formed = computeFormedShape(graph, resolved, 0);
-    for (const face of resolved.faces) {
-      if (!roundRoles.has(face.role)) continue;
-      for (const p of allPoints(formed.get(face.id)!)) expect(p.z).toBeCloseTo(0, 9);
-    }
-  });
-
+describe('loftedProfile() — gusseted bag: the same engine as the pillow, not bespoke geometry', () => {
   it('produces only finite points across the fill range', () => {
-    const { graph, resolved } = setup(def);
+    const { graph, resolved } = setup(bagGusseted);
     for (const fill of [0, 0.25, 0.5, 0.75, 1]) {
       const formed = computeFormedShape(graph, resolved, fill);
       for (const face of formed.values()) {
@@ -122,8 +91,35 @@ describe.each([['gusseted', bagGusseted]] as const)('tube() — %s bag', (_name,
     }
   });
 
-  it('every formed vertex keeps its flat (x, y) as its uv — the shared parameterization', () => {
-    const { graph, resolved } = setup(def);
+  it('the round body flattens toward the crimp cross-section at fill = 0', () => {
+    const { graph, resolved } = setup(bagGusseted);
+    const params = (graph.meta?.params as Record<string, number>) ?? {};
+    const crimpHalfDepth = Math.max(params.caliper!, params.bagD! * 0.06);
+    const roundRoles = new Set((graph.formedShape as FormedShapeSpec).faceRoles ?? []);
+    const formed = computeFormedShape(graph, resolved, 0);
+    for (const face of resolved.faces) {
+      if (!roundRoles.has(face.role)) continue;
+      for (const p of allPoints(formed.get(face.id)!)) expect(Math.abs(p.z)).toBeLessThanOrEqual(crimpHalfDepth + 1e-9);
+    }
+  });
+
+  it('the midpoint bulges to roughly bagD/2 in z as fill rises to 1, well past the crimp bands', () => {
+    const { graph, resolved } = setup(bagGusseted);
+    const params = (graph.meta?.params as Record<string, number>) ?? {};
+    const crimpHalfDepth = Math.max(params.caliper!, params.bagD! * 0.06);
+    const roundRoles = new Set((graph.formedShape as FormedShapeSpec).faceRoles ?? []);
+    const formed = computeFormedShape(graph, resolved, 1);
+    let maxZ = 0;
+    for (const face of resolved.faces) {
+      if (!roundRoles.has(face.role)) continue;
+      for (const p of allPoints(formed.get(face.id)!)) maxZ = Math.max(maxZ, Math.abs(p.z));
+    }
+    expect(maxZ).toBeGreaterThan(crimpHalfDepth);
+    expect(maxZ).toBeLessThanOrEqual(params.bagD! / 2 + 1e-6);
+  });
+
+  it('every formed vertex keeps its flat (x, y) as its uv', () => {
+    const { graph, resolved } = setup(bagGusseted);
     const formed = computeFormedShape(graph, resolved, 1);
     for (const face of formed.values()) {
       for (const p of allUv(face)) {
@@ -133,15 +129,12 @@ describe.each([['gusseted', bagGusseted]] as const)('tube() — %s bag', (_name,
     }
   });
 
-  it('rounds toward a girth-preserving tube as fill rises, without blowing up', () => {
-    const { graph, resolved } = setup(def);
-    const e0 = extents(computeFormedShape(graph, resolved, 0));
-    const e1 = extents(computeFormedShape(graph, resolved, 1));
-    // Folding into a round cross-section shortens the flattened girth axis
-    // and grows depth (z); length (y) is untouched by this approximation.
-    expect(e1.x).toBeLessThan(e0.x);
-    expect(e1.z).toBeGreaterThan(e0.z);
-    expect(e1.y).toBeCloseTo(e0.y, 6);
+  it('every face is covered — nothing falls through to a bare flat default', () => {
+    const { graph, resolved } = setup(bagGusseted);
+    const spec = graph.formedShape as FormedShapeSpec;
+    const covered = new Set([...(spec.faceRoles ?? []), ...(spec.flapFaceRoles ?? [])]);
+    const roles = new Set(resolved.faces.map((f) => f.role));
+    expect(covered).toEqual(roles);
   });
 });
 
@@ -308,18 +301,25 @@ describe('loftedProfile() — pillow bag: one lofted-cross-section engine, no fo
 });
 
 describe('gussetedPouch() — SUP bag', () => {
-  it('is exactly the rigid lay-flat fold at fill = 0', () => {
+  it('lies exactly in the rigid lay-flat fold\'s own plane at fill = 0', () => {
+    // Walls and bases are now sampled as a curvature-driven grid (so the
+    // wall's sin() bulge, which peaks at its own MID-height, actually shows
+    // up — see gussetedPouch), not just each face's own flat corners, so a
+    // point-for-point match against the rigid fold's vertex list no longer
+    // applies. At fill = 0 both transforms collapse to zero displacement,
+    // so every sampled point must still land exactly on the rigid face's
+    // own (flat, z = 0) plane and within its rigid x/y bounds.
     const { graph, resolved } = setup(bagSup);
     const formed = computeFormedShape(graph, resolved, 0);
     const rigid = foldedFacePoints(resolved, 1);
     for (const face of resolved.faces) {
-      const formedPoints = allPoints(formed.get(face.id)!);
-      const rigidFace = rigid.get(face.id)!;
-      expect(formedPoints).toHaveLength(rigidFace.points.length);
-      for (let i = 0; i < formedPoints.length; i++) {
-        expect(formedPoints[i]!.x).toBeCloseTo(rigidFace.points[i]!.x, 9);
-        expect(formedPoints[i]!.y).toBeCloseTo(rigidFace.points[i]!.y, 9);
-        expect(formedPoints[i]!.z).toBeCloseTo(rigidFace.points[i]!.z, 9);
+      const bnd = boundsOf(rigid.get(face.id)!.points.map((p) => ({ x: p.x, y: p.y })))!;
+      for (const p of allPoints(formed.get(face.id)!)) {
+        expect(p.z).toBeCloseTo(0, 9);
+        expect(p.x).toBeGreaterThanOrEqual(bnd.min.x - 1e-6);
+        expect(p.x).toBeLessThanOrEqual(bnd.max.x + 1e-6);
+        expect(p.y).toBeGreaterThanOrEqual(bnd.min.y - 1e-6);
+        expect(p.y).toBeLessThanOrEqual(bnd.max.y + 1e-6);
       }
     }
   });
@@ -340,13 +340,31 @@ describe('gussetedPouch() — SUP bag', () => {
     }
   });
 
-  it('bulges outward in z and opens in x as fill rises, with y unchanged from the rigid fold', () => {
+  it('bulges outward in z as fill rises, with the overall y unchanged from the rigid fold', () => {
     const { graph, resolved } = setup(bagSup);
     const e0 = extents(computeFormedShape(graph, resolved, 0));
     const e1 = extents(computeFormedShape(graph, resolved, 1));
     expect(e1.z).toBeGreaterThan(e0.z);
-    expect(e1.x).toBeGreaterThan(e0.x);
     expect(e1.y).toBeCloseTo(e0.y, 6);
+  });
+
+  it('opens the base to the walls\' own width, welded to their edge rather than centred on the world origin', () => {
+    const { graph, resolved } = setup(bagSup);
+    const spec = graph.formedShape as FormedShapeSpec;
+    const roles = spec.faceRoles ?? [];
+    const byRole = new Map(resolved.faces.map((f) => [f.role, f]));
+    const byArea = [...roles.map((r) => byRole.get(r)!)].sort((a, b) => b.area - a.area);
+    const wall = byArea[0]!;
+    const bases = byArea.slice(2, 4);
+    const rigid = foldedFacePoints(resolved, 1);
+    const wallBnd = boundsOf(rigid.get(wall.id)!.points.map((p) => ({ x: p.x, y: p.y })))!;
+    const formed = computeFormedShape(graph, resolved, 1);
+    for (const base of bases) {
+      for (const p of allPoints(formed.get(base.id)!)) {
+        expect(p.x).toBeGreaterThanOrEqual(wallBnd.min.x - 1e-6);
+        expect(p.x).toBeLessThanOrEqual(wallBnd.max.x + 1e-6);
+      }
+    }
   });
 
   it('produces only finite points across the fill range', () => {

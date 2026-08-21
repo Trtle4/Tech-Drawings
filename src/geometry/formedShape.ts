@@ -715,6 +715,74 @@ function gussetedPouch(
   const wallWidth = Math.max(...walls.map((f) => rigidBounds(f).max.x - rigidBounds(f).min.x));
   const ovalRadiusX = wallWidth / 2;
 
+  // Curvature-driven sampling, same reasoning as the lofted tube: both
+  // transforms below are smooth functions of RIGID (x, y) position — the
+  // wall's sin() bulge peaks at v = 0.5, its own MID-height, not at either
+  // edge — so evaluating them only at each face's own 4 (or 6, through the
+  // gusset's pinch chamfer) flat corners samples the wall's bulge at
+  // exactly the two points (v = 0, v = 1) where it is guaranteed to be
+  // zero. The whole wall bulge was invisible for exactly that reason; a
+  // sampled interior grid is what actually shows it.
+  const ROW_SPACING_MM = 3;
+  const COL_SPACING_MM = 3;
+  const rowsFor = (h: number) => Math.max(4, Math.min(120, Math.round(h / ROW_SPACING_MM)));
+  const colsFor = (w: number) => Math.max(2, Math.min(120, Math.round(w / COL_SPACING_MM)));
+
+  /** A polygon's own x-range at a given y, via scanline edge crossings — so
+   * a chamfered (pinched) hexagon tapers correctly instead of being sampled
+   * as its bounding rectangle. */
+  const xRangeAtY = (pts: { x: number; y: number }[], y: number): { x0: number; x1: number } | null => {
+    const xs: number[] = [];
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i]!;
+      const b = pts[(i + 1) % pts.length]!;
+      if ((a.y <= y && b.y > y) || (b.y <= y && a.y > y)) xs.push(a.x + ((y - a.y) / (b.y - a.y)) * (b.x - a.x));
+    }
+    return xs.length < 2 ? null : { x0: Math.min(...xs), x1: Math.max(...xs) };
+  };
+
+  /** This face's rigid-y -> flat-y mapping, from two of its own vertices —
+   * a pure shift or a reflection for every face here, since every hinge in
+   * this style is a horizontal crease (x never changes, flat to rigid). */
+  const flatYOf = (face: Face, rigidPts: Vec3[]): ((ry: number) => number) => {
+    const pts = face.outer.points;
+    const y0f = pts[0]!.y;
+    const y0r = rigidPts[0]!.y;
+    const idx1 = pts.findIndex((p, i) => i > 0 && p.y !== y0f);
+    const y1f = pts[idx1]!.y;
+    const y1r = rigidPts[idx1]!.y;
+    const a = (y1r - y0r) / (y1f - y0f);
+    const b = y0r - a * y0f;
+    return (ry: number) => (ry - b) / a;
+  };
+
+  const sampleFace = (
+    face: Face,
+    rigidPts: Vec3[],
+    pointAt: (rx: number, ry: number) => { x: number; y: number; z: number },
+  ): { facets: FormedFacet[]; outline: Vec3[] } => {
+    const rb = boundsOf(rigidPts.map((p) => ({ x: p.x, y: p.y })))!;
+    const toFlatY = flatYOf(face, rigidPts);
+    const rows = rowsFor(rb.max.y - rb.min.y);
+    // A constant column count for every row, from the face's OWN overall
+    // width — gridToQuads pairs row[i] with next[i], so every row must have
+    // the same point count. A chamfered row still tapers correctly: its own
+    // (possibly narrower) x-range is just spread across that same count.
+    const cols = colsFor(rb.max.x - rb.min.x);
+    const grid: { p: Vec3; uv: Vec2 }[][] = [];
+    for (let j = 0; j <= rows; j++) {
+      const ry = rb.min.y + ((rb.max.y - rb.min.y) * j) / rows;
+      const range = xRangeAtY(rigidPts, ry) ?? { x0: rb.min.x, x1: rb.max.x };
+      const row: { p: Vec3; uv: Vec2 }[] = [];
+      for (let i = 0; i <= cols; i++) {
+        const rx = range.x0 + ((range.x1 - range.x0) * i) / cols;
+        row.push({ p: pointAt(rx, ry), uv: { x: rx, y: toFlatY(ry) } });
+      }
+      grid.push(row);
+    }
+    return { facets: gridToQuads(grid), outline: gridPerimeter(grid) };
+  };
+
   for (const face of walls) {
     const rigidPts = rigid.get(face.id)!.points;
     const rb = rigidBounds(face);
@@ -722,44 +790,61 @@ function gussetedPouch(
     // Which edge is nearer the gusset decides which end gets v = 0.
     const gussetAtLowY = Math.abs(rb.min.y - baseCenterY) < Math.abs(rb.max.y - baseCenterY);
     const span = rb.max.y - rb.min.y || 1;
-    const points = face.outer.points.map((_p, i) => {
-      const rp = rigidPts[i]!;
-      const v = gussetAtLowY ? (rp.y - rb.min.y) / span : (rb.max.y - rp.y) / span;
+    // Displaced from the rigid position; x and y stay exactly where the
+    // tested fold already put them, only z (the bulge) moves.
+    const { facets, outline } = sampleFace(face, rigidPts, (rx, ry) => {
+      const v = gussetAtLowY ? (ry - rb.min.y) / span : (rb.max.y - ry) / span;
       const bulge = fill * depth * Math.sin(Math.PI * Math.max(0, Math.min(1, v)));
-      // Displace from the rigid position; x and y stay exactly where the
-      // tested fold already put them, only z (the bulge) moves.
-      const inflated: Vec3 = { x: rp.x, y: rp.y, z: sign * bulge };
-      return lerp3(rp, inflated, fill);
+      return { x: rx, y: ry, z: lerp(0, sign * bulge, fill) };
     });
-    out.set(face.id, { face, facets: [{ points, uv: face.outer.points }], outline: [points] });
+    out.set(face.id, { face, facets, outline: [outline] });
   }
+
+  // Each base half hinges to a wall along the edge it shares with that
+  // wall's own gusset-adjacent edge — the SAME edge `gussetAtLowY` finds
+  // per wall above. In lay-flat, both halves' hinge edges land together at
+  // that shared y (the W-fold collapses onto itself), which is why a base's
+  // own rigidBounds has one edge sitting exactly on a wall edge and the
+  // other at the gusset's own centre fold.
+  const wallBnd = walls.length ? rigidBounds(walls[0]!) : null;
+  const wallHingeY = wallBnd ? (Math.abs(wallBnd.min.y - baseCenterY) < Math.abs(wallBnd.max.y - baseCenterY) ? wallBnd.min.y : wallBnd.max.y) : baseCenterY;
+  // The wall's own centre in x, not the world origin — nx*ovalRadiusX alone
+  // (the pre-existing formula) always centres the opened oval at x = 0
+  // regardless of where the wall it has to meet actually sits, which is
+  // fine only when a style's own wall happens to be centred there. Adding
+  // it back is what welds the base's opened edge to the wall's actual edge
+  // instead of leaving the base floating off to whichever side x = 0 is.
+  const wallCenterX = wallBnd ? (wallBnd.min.x + wallBnd.max.x) / 2 : 0;
 
   for (const face of bases) {
     const rigidPts = rigid.get(face.id)!.points;
     const rb = rigidBounds(face);
     const sign = baseSign.get(face.id) ?? 1;
     const cx = (rb.min.x + rb.max.x) / 2;
-    const cy = (rb.min.y + rb.max.y) / 2;
     const halfW = (rb.max.x - rb.min.x) / 2 || 1;
-    const halfH = (rb.max.y - rb.min.y) / 2 || 1;
-    const points = face.outer.points.map((_p, i) => {
-      const rp = rigidPts[i]!;
-      const nx = (rp.x - cx) / halfW; // -1..1 across the panel width
-      const nz = (rp.y - cy) / halfH; // -1..1 from the gusset centre outward
-      // y stays at the rigid position — only x (spreads to the oval width)
-      // and z (bulges outward past the centre line) move.
-      const opened: Vec3 = { x: nx * ovalRadiusX, y: rp.y, z: sign * Math.max(0, nz) * depth };
-      return lerp3(rp, opened, fill);
+    const armLength = rb.max.y - rb.min.y || 1;
+    const hingeY = Math.abs(rb.min.y - wallHingeY) < Math.abs(rb.max.y - wallHingeY) ? rb.min.y : rb.max.y;
+    // A real base is not the wall's own vertical plane spread sideways — it
+    // is the gusset ROTATED flat, out of that plane, into a horizontal oval
+    // at the walls' own shared bottom edge. `s` is how far along the
+    // gusset's arm a point sits, from 0 at the wall hinge (stays put) to 1
+    // at the gusset's own centre fold (swings out to full depth); x spreads
+    // to the oval width the same way at every s, and y collapses onto the
+    // hinge line itself rather than staying spread across the arm's own
+    // rigid length — the arm's LENGTH becomes depth in z, not height in y.
+    const { facets, outline } = sampleFace(face, rigidPts, (rx, ry) => {
+      const s = Math.abs(ry - hingeY) / armLength; // 0 at the wall hinge, 1 at the fold centre
+      const nx = (rx - cx) / halfW; // -1..1 across the panel width
+      return {
+        x: lerp(rx, wallCenterX + nx * ovalRadiusX, fill),
+        y: lerp(ry, hingeY, fill),
+        z: lerp(0, sign * s * depth, fill),
+      };
     });
-    out.set(face.id, { face, facets: [{ points, uv: face.outer.points }], outline: [points] });
+    out.set(face.id, { face, facets, outline: [outline] });
   }
 
   return out;
 }
 
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
-const lerp3 = (a: Vec3, b: Vec3, t: number): Vec3 => ({
-  x: lerp(a.x, b.x, t),
-  y: lerp(a.y, b.y, t),
-  z: lerp(a.z, b.z, t),
-});
