@@ -11,7 +11,8 @@
  * any of them.
  */
 
-import type { Vec3 } from '../geometry/types.js';
+import type { Vec2, Vec3 } from '../geometry/types.js';
+import type { FormedFace } from '../geometry/formedShape.js';
 
 export type UpAxis = 'x' | 'y' | 'z';
 
@@ -56,8 +57,8 @@ const norm = (a: Vec3): Vec3 => {
  */
 export function cameraBasis(
   upAxis: UpAxis = 'y',
-  azimuth = (48 * Math.PI) / 180,
-  elevation = (26 * Math.PI) / 180,
+  azimuth = (30 * Math.PI) / 180,
+  elevation = (18 * Math.PI) / 180,
 ): CameraBasis {
   const U = AXIS[upAxis];
   // A reference vector not parallel to U, to seed the horizontal plane basis.
@@ -99,4 +100,66 @@ export function project(p: Vec3, cam: CameraBasis): Projected2D {
  */
 export function paintOrder<T extends { ply: number; depth: number }>(faces: T[]): T[] {
   return [...faces].sort((a, b) => a.ply - b.ply || a.depth - b.depth);
+}
+
+/** One projected, shaded, paintable patch — a facet of a `FormedFace`, ready to draw. */
+export interface ProjectedFacet {
+  pts: Vec2[];
+  depth: number;
+  shade: number;
+  ply: number;
+  /**
+   * True for a face's own outer-boundary trace: stroke only, no fill. A
+   * lofted face's interior facets are seamed invisibly (their own fill
+   * colour), so this is what actually marks a real edge — a different
+   * panel, a fin folded on — without the tessellation itself showing as a
+   * mesh.
+   */
+  outline?: boolean;
+}
+
+function projectRing(points: Vec3[], cam: CameraBasis): { pts: Vec2[]; depth: number; shade: number } | null {
+  if (points.length < 3) return null;
+  const proj = points.map((p) => project(p, cam));
+  const depth = proj.reduce((s, q) => s + q.depth, 0) / proj.length;
+  let nx = 0;
+  let ny = 0;
+  let nz = 0;
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i]!;
+    const b = points[(i + 1) % points.length]!;
+    nx += (a.y - b.y) * (a.z + b.z);
+    ny += (a.z - b.z) * (a.x + b.x);
+    nz += (a.x - b.x) * (a.y + b.y);
+  }
+  const len = Math.hypot(nx, ny, nz) || 1;
+  const dot3 = (nx / len) * cam.forward.x + (ny / len) * cam.forward.y + (nz / len) * cam.forward.z;
+  return { pts: proj.map((q) => ({ x: q.x, y: q.y })), depth, shade: Math.abs(dot3) };
+}
+
+/**
+ * Project every facet of every formed face through a camera and return them
+ * in paint order, ready to draw as one SVG path each.
+ *
+ * Operating per FACET rather than per face is what makes a lofted, curved
+ * face render as a curve: each small quad gets its own normal, so a panel
+ * that curves toward the camera on one edge and away on the other shades
+ * (and self-occludes via paint order) the way a curved surface should,
+ * instead of being one flat-shaded polygon standing in for the whole panel.
+ * A rigid, flat face — still exactly one facet — renders identically to
+ * before this existed. Each face's own `outline` is projected too, tagged
+ * so the renderer draws it as a stroke-only line at the same paint-order
+ * position as its facets, rather than a mesh line at every facet seam.
+ */
+export function projectFormedFaces(formed: Map<string, FormedFace>, cam: CameraBasis): ProjectedFacet[] {
+  const out: ProjectedFacet[] = [];
+  for (const { face, facets, outline } of formed.values()) {
+    for (const { points } of facets) {
+      const r = projectRing(points, cam);
+      if (r) out.push({ ...r, ply: face.ply });
+    }
+    const r = projectRing(outline, cam);
+    if (r) out.push({ ...r, ply: face.ply, outline: true });
+  }
+  return paintOrder(out);
 }

@@ -24,13 +24,35 @@ import { evalExpr, type Scope } from '../styles/expr.js';
 import { foldedFacePoints } from './fold.js';
 import { boundsOf } from './math.js';
 
-/** A face's formed geometry: world points, each still tagged with its flat (x, y). */
-export interface FormedFace {
-  face: Face;
-  /** World-space points, in the same order as `face.outer.points` extended by subdivision. */
+/** One small, roughly-planar patch of a formed face — a quad, or a whole flat face. */
+export interface FormedFacet {
+  /** World-space points. */
   points: Vec3[];
   /** Flat (x, y) for each point in `points` — the UV, unchanged by forming. */
   uv: Vec2[];
+}
+
+/**
+ * A face's formed geometry, as one or more facets. A rigid/flat face (a
+ * carton panel, a bag's flat crimp cap) is exactly one facet — its own outer
+ * ring. A face on a LOFTED, curved surface is subdivided into many small
+ * quads, because a curved cross-section drawn as a single flat-shaded
+ * polygon per original face reads as faceted (a hexagon standing in for an
+ * ellipse) regardless of how finely that one polygon's own boundary is
+ * sampled — only the OUTER edge gets subdivided that way, never the
+ * interior. Consumers render every facet as its own small flat-shaded patch.
+ */
+export interface FormedFace {
+  face: Face;
+  facets: FormedFacet[];
+  /**
+   * The face's own outer boundary, world points, drawn as a stroke-only line
+   * separate from the (possibly many) shaded facets. Facets themselves are
+   * seamed in their own fill colour so tessellation never shows as a visible
+   * mesh; this is what actually marks where one face ends and its neighbour
+   * — a different panel, a folded-on fin — begins.
+   */
+  outline: Vec3[];
 }
 
 /**
@@ -82,7 +104,7 @@ export function computeFormedShape(
 function rigidFallback(resolved: ResolvedGeometry): Map<string, FormedFace> {
   const out = new Map<string, FormedFace>();
   for (const [id, { face, points }] of foldedFacePoints(resolved, 1)) {
-    out.set(id, { face, points, uv: face.outer.points });
+    out.set(id, { face, facets: [{ points, uv: face.outer.points }], outline: points });
   }
   return out;
 }
@@ -163,7 +185,7 @@ function tube(
         uv.push(...rowUv.reverse());
       }
     }
-    out.set(face.id, { face, points, uv });
+    out.set(face.id, { face, facets: [{ points, uv }], outline: points });
   }
 
   return out;
@@ -235,7 +257,8 @@ function loftedProfile(
   // Anything the spec does not mention is drawn flat at its own position —
   // never the rigid fold, even as a fallback.
   for (const face of resolved.faces) {
-    out.set(face.id, { face, points: face.outer.points.map((p) => ({ x: p.x, y: p.y, z: 0 })), uv: face.outer.points });
+    const flatPoints = face.outer.points.map((p) => ({ x: p.x, y: p.y, z: 0 }));
+    out.set(face.id, { face, facets: [{ points: flatPoints, uv: face.outer.points }], outline: flatPoints });
   }
   if (roundFaces.length === 0 || (spec.stations ?? []).length < 2) return out;
 
@@ -283,44 +306,58 @@ function loftedProfile(
     return { x: flatRef.halfWidth * Math.cos(angle), z: flatRef.halfDepth * Math.sin(angle) };
   };
 
-  const SEGMENTS_PER_FACE = 10;
-  const ROWS_PER_FACE = 8;
+  // Tessellation is driven by curvature, not by how many panels divide the
+  // girth. A pillow bag has three round panels; a gusseted bag might have
+  // seven. Sampling a fixed count PER FACE makes the cross-section a hexagon
+  // for the first and a smoother polygon for the second, for reasons that
+  // have nothing to do with either bag's actual roundness — the earlier bug.
+  // Instead: pick a total segment count around the FULL girth from a target
+  // chord error against the largest radius any station actually reaches,
+  // then give each face a share of that total proportional to its own
+  // angular span. A wide panel gets many segments, a narrow one gets few,
+  // but the ellipse they jointly trace is equally smooth regardless of the
+  // panel count in between.
+  const maxRadius = Math.max(
+    1e-6,
+    ...stations.flatMap((s) => [Math.abs(s.halfWidth), Math.abs(s.halfDepth)]),
+  );
+  const CHORD_TOLERANCE_MM = 0.4;
+  const angleStep = 2 * Math.acos(Math.max(-1, 1 - CHORD_TOLERANCE_MM / maxRadius));
+  const totalGirthSegments = Math.max(24, Math.min(240, Math.ceil((2 * Math.PI) / angleStep)));
+  const segmentsForSpan = (tSpan: number) => Math.max(2, Math.round(totalGirthSegments * Math.abs(tSpan)));
 
-  const traceGrid = (face: Face, grid: { p: Vec3; uv: Vec2 }[][]): void => {
-    // Trace just the perimeter of the row x column grid — bottom row left to
-    // right, up the right edge, top row right to left, down the left edge —
-    // one closed, non-self-intersecting outline that still reflects the
-    // interior loft along the way, without needing a separate sub-face per
-    // grid cell.
-    const points: Vec3[] = [];
-    const uv: Vec2[] = [];
-    const push = (cell: { p: Vec3; uv: Vec2 }) => {
-      points.push(cell.p);
-      uv.push(cell.uv);
-    };
-    for (const cell of grid[0]!) push(cell);
-    for (let j = 1; j < grid.length; j++) push(grid[j]![grid[j]!.length - 1]!);
-    for (let i = grid[grid.length - 1]!.length - 2; i >= 0; i--) push(grid[grid.length - 1]![i]!);
-    for (let j = grid.length - 2; j >= 1; j--) push(grid[j]![0]!);
-    out.set(face.id, { face, points, uv });
-  };
+  // Rows scale with each face's own physical height, not with topology
+  // either — a short crimp cap and a tall body panel each get a sane row
+  // count for their own size, independent of anything else in the mesh.
+  const ROW_SPACING_MM = 3;
+  const rowsForHeight = (h: number) => Math.max(6, Math.min(120, Math.round(h / ROW_SPACING_MM)));
 
-  for (const face of roundFaces) {
-    const bnd = boundsOf(face.outer.points)!;
+  const sampleGrid = (
+    bnd: { min: Vec2; max: Vec2 },
+    pointAt: (x: number, y: number) => { x: number; z: number },
+  ): { p: Vec3; uv: Vec2 }[][] => {
     const w = bnd.max.x - bnd.min.x;
     const h = bnd.max.y - bnd.min.y;
+    const cols = segmentsForSpan(w / girth);
+    const rows = rowsForHeight(h);
     const grid: { p: Vec3; uv: Vec2 }[][] = [];
-    for (let j = 0; j <= ROWS_PER_FACE; j++) {
-      const y = bnd.min.y + (h * j) / ROWS_PER_FACE;
+    for (let j = 0; j <= rows; j++) {
+      const y = bnd.min.y + (h * j) / rows;
       const row: { p: Vec3; uv: Vec2 }[] = [];
-      for (let i = 0; i <= SEGMENTS_PER_FACE; i++) {
-        const x = bnd.min.x + (w * i) / SEGMENTS_PER_FACE;
-        const { x: px, z } = surfaceAt(y, angleOf(x));
+      for (let i = 0; i <= cols; i++) {
+        const x = bnd.min.x + (w * i) / cols;
+        const { x: px, z } = pointAt(x, y);
         row.push({ p: { x: px, y, z }, uv: { x, y } });
       }
       grid.push(row);
     }
-    traceGrid(face, grid);
+    return grid;
+  };
+
+  for (const face of roundFaces) {
+    const bnd = boundsOf(face.outer.points)!;
+    const grid = sampleGrid(bnd, (x, y) => surfaceAt(y, angleOf(x)));
+    out.set(face.id, { face, facets: gridToQuads(grid), outline: gridPerimeter(grid) });
   }
 
   const thickness = 2 * graph.caliper;
@@ -334,60 +371,81 @@ function loftedProfile(
 
   for (const face of flapFaces) {
     const bnd = boundsOf(face.outer.points)!;
-    const w = bnd.max.x - bnd.min.x;
-    const h = bnd.max.y - bnd.min.y;
     const distMin = Math.min(Math.abs(bnd.min.x - girthX0), Math.abs(bnd.min.x - girthX1));
     const distMax = Math.min(Math.abs(bnd.max.x - girthX0), Math.abs(bnd.max.x - girthX1));
     const attachX = distMin <= distMax ? bnd.min.x : bnd.max.x;
     const seamT = Math.round(angleOf(attachX)); // periodic: 0 or 1, the same physical seam point
 
-    const grid: { p: Vec3; uv: Vec2 }[][] = [];
-    for (let j = 0; j <= ROWS_PER_FACE; j++) {
-      const y = bnd.min.y + (h * j) / ROWS_PER_FACE;
-      const row: { p: Vec3; uv: Vec2 }[] = [];
-
-      if (sealStyle === 'lap') {
-        // Not a separate flap — the same lofted surface, sampled past the
-        // seam, offset out by the extra ply's thickness along the local
-        // radial direction.
-        for (let i = 0; i <= SEGMENTS_PER_FACE; i++) {
-          const x = bnd.min.x + (w * i) / SEGMENTS_PER_FACE;
-          const p = surfaceAt(y, angleOf(x));
-          const n = normalize2(p.x, p.z);
-          row.push({ p: { x: p.x + n.x * thickness, y, z: p.z + n.z * thickness }, uv: { x, y } });
-        }
-      } else {
-        // A straight flap, folded flat against the surface at the seam: a
-        // fixed offset out from the seam point, running its own true width
-        // along a fixed tangent toward flapFold. The tangent MUST come from
-        // the flat reference cross-section, not the current (possibly
-        // rounded) surfaceAt — at the seam, which sits at the ellipse's own
-        // widest point, the round surface's tangent runs almost entirely in
-        // z (that IS the tube's curvature there), so building the flap from
-        // it swings the flap out to the side by as much as the section's own
-        // depth, the exact "sticking out like a flag" bug this replaces. A
-        // flap that is actually folded flat stays flat regardless of how
-        // round the body is elsewhere: it runs along the flat width
-        // direction, which is what the degenerate flat ellipse gives.
+    let grid: { p: Vec3; uv: Vec2 }[][];
+    if (sealStyle === 'lap') {
+      // Not a separate flap — the same lofted surface, sampled past the
+      // seam, offset out by the extra ply's thickness along the local
+      // radial direction.
+      grid = sampleGrid(bnd, (x, y) => {
+        const p = surfaceAt(y, angleOf(x));
+        const n = normalize2(p.x, p.z);
+        return { x: p.x + n.x * thickness, z: p.z + n.z * thickness };
+      });
+    } else {
+      // A straight flap, folded flat against the surface at the seam: a
+      // fixed offset out from the seam point, running its own true width
+      // along a fixed tangent toward flapFold. The tangent MUST come from
+      // the flat reference cross-section, not the current (possibly
+      // rounded) surfaceAt — at the seam, which sits at the ellipse's own
+      // widest point, the round surface's tangent runs almost entirely in
+      // z (that IS the tube's curvature there), so building the flap from
+      // it swings the flap out to the side by as much as the section's own
+      // depth, the exact "sticking out like a flag" bug this replaces. A
+      // flap that is actually folded flat stays flat regardless of how
+      // round the body is elsewhere: it runs along the flat width
+      // direction, which is what the degenerate flat ellipse gives.
+      grid = sampleGrid(bnd, (x, y) => {
         const base = surfaceAt(y, seamT);
         const flatBase = flatAt(seamT);
         const flatStep = flatAt(seamT + foldSign * TANGENT_STEP);
         const tangent = normalize2(flatStep.x - flatBase.x, flatStep.z - flatBase.z);
         const normal = normalize2(base.x, base.z);
-        for (let i = 0; i <= SEGMENTS_PER_FACE; i++) {
-          const x = bnd.min.x + (w * i) / SEGMENTS_PER_FACE;
-          const along = Math.abs(x - attachX);
-          const px = base.x + normal.x * thickness + tangent.x * along;
-          const pz = base.z + normal.z * thickness + tangent.z * along;
-          row.push({ p: { x: px, y, z: pz }, uv: { x, y } });
-        }
-      }
-      grid.push(row);
+        const along = Math.abs(x - attachX);
+        return { x: base.x + normal.x * thickness + tangent.x * along, z: base.z + normal.z * thickness + tangent.z * along };
+      });
     }
-    traceGrid(face, grid);
+    out.set(face.id, { face, facets: gridToQuads(grid), outline: gridPerimeter(grid) });
   }
 
   return out;
+}
+
+/**
+ * The outer perimeter of a sampled row x column grid — bottom row left to
+ * right, up the right edge, top row right to left, down the left edge — one
+ * closed loop for a stroke-only boundary line, separate from the filled
+ * quad facets.
+ */
+function gridPerimeter(grid: { p: Vec3; uv: Vec2 }[][]): Vec3[] {
+  const points: Vec3[] = [];
+  const push = (cell: { p: Vec3 }) => points.push(cell.p);
+  for (const cell of grid[0]!) push(cell);
+  for (let j = 1; j < grid.length; j++) push(grid[j]![grid[j]!.length - 1]!);
+  for (let i = grid[grid.length - 1]!.length - 2; i >= 0; i--) push(grid[grid.length - 1]![i]!);
+  for (let j = grid.length - 2; j >= 1; j--) push(grid[j]![0]!);
+  return points;
+}
+
+/** Every interior cell of a sampled row x column grid, as its own quad facet. */
+function gridToQuads(grid: { p: Vec3; uv: Vec2 }[][]): FormedFacet[] {
+  const facets: FormedFacet[] = [];
+  for (let j = 0; j < grid.length - 1; j++) {
+    const row = grid[j]!;
+    const next = grid[j + 1]!;
+    for (let i = 0; i < row.length - 1; i++) {
+      const a = row[i]!;
+      const b = row[i + 1]!;
+      const c = next[i + 1]!;
+      const d = next[i]!;
+      facets.push({ points: [a.p, b.p, c.p, d.p], uv: [a.uv, b.uv, c.uv, d.uv] });
+    }
+  }
+  return facets;
 }
 
 // ---------------------------------------------------------------------------
@@ -463,7 +521,7 @@ function gussetedPouch(
       const inflated: Vec3 = { x: rp.x, y: rp.y, z: sign * bulge };
       return lerp3(rp, inflated, fill);
     });
-    out.set(face.id, { face, points, uv: face.outer.points });
+    out.set(face.id, { face, facets: [{ points, uv: face.outer.points }], outline: points });
   }
 
   for (const face of bases) {
@@ -483,7 +541,7 @@ function gussetedPouch(
       const opened: Vec3 = { x: nx * ovalRadiusX, y: rp.y, z: sign * Math.max(0, nz) * depth };
       return lerp3(rp, opened, fill);
     });
-    out.set(face.id, { face, points, uv: face.outer.points });
+    out.set(face.id, { face, facets: [{ points, uv: face.outer.points }], outline: points });
   }
 
   return out;

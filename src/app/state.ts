@@ -29,7 +29,11 @@ export interface Camera3DState {
   view: Camera2D;
 }
 
-export const DEFAULT_ORBIT = { azimuth: (48 * Math.PI) / 180, elevation: (26 * Math.PI) / 180 };
+// A three-quarter view facing the model's own "front" — azimuth 0 looks
+// straight down the up-axis-perpendicular plane that reads widest (a bag's
+// front panel, a case's widest face); 48deg put the camera close enough to
+// side-on that a bag's cross-section read as edge-on and unreadable.
+export const DEFAULT_ORBIT = { azimuth: (30 * Math.PI) / 180, elevation: (18 * Math.PI) / 180 };
 
 export interface AppState {
   styleId: string;

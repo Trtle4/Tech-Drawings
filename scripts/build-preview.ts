@@ -16,11 +16,11 @@ import { fileURLToPath } from 'node:url';
 import { STYLES, compileStyle, proofTaperedTray } from '../src/styles/index.js';
 import type { CompiledStyle, StyleDefinition } from '../src/styles/schema.js';
 import { blankSize, materialArea, resolveGeometry } from '../src/geometry/resolve.js';
-import { foldedFacePoints } from '../src/geometry/fold.js';
-import { computeFormedShape, hasFormedShape } from '../src/geometry/formedShape.js';
+import { hasFormedShape } from '../src/geometry/formedShape.js';
 import { flattenPath } from '../src/geometry/arrangement.js';
-import type { GeometryGraph, ResolvedGeometry, Vec2, Vec3 } from '../src/geometry/types.js';
-import { cameraBasis, paintOrder, project } from '../src/render/iso.js';
+import type { GeometryGraph, ResolvedGeometry } from '../src/geometry/types.js';
+import { cameraBasis } from '../src/render/iso.js';
+import { renderFormedSvg } from '../src/render/formedSvg.js';
 import { buildDxf } from '../src/export/dxf.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -138,68 +138,10 @@ function drawing2d(compiled: CompiledStyle, resolved: ResolvedGeometry): string 
 // 3D preview — isometric projection of the fold transforms
 // ---------------------------------------------------------------------------
 
-function preview3d(graph: GeometryGraph, resolved: ResolvedGeometry, ratio: number): string {
-  const cam = cameraBasis(graph.upAxis);
-  const dot = (a: Vec3, b: Vec3) => a.x * b.x + a.y * b.y + a.z * b.z;
-
-  // A style with a declared formedShape (a bag) shows its approximated filled
-  // pack, not the rigid board fold — that fold is real for a carton, but a
-  // pillow bag has no rigid folded form to show.
-  const folded = hasFormedShape(graph) ? computeFormedShape(graph, resolved) : foldedFacePoints(resolved, ratio);
-  const faces: { pts: Vec2[]; depth: number; shade: number; ply: number }[] = [];
-
-  for (const { face, points } of folded.values()) {
-    if (points.length < 3) continue;
-    const proj = points.map((p) => project(p, cam));
-    const depth = proj.reduce((s, q) => s + q.depth, 0) / proj.length;
-    let nx = 0;
-    let ny = 0;
-    let nz = 0;
-    for (let i = 0; i < points.length; i++) {
-      const a = points[i]!;
-      const b = points[(i + 1) % points.length]!;
-      nx += (a.y - b.y) * (a.z + b.z);
-      ny += (a.z - b.z) * (a.x + b.x);
-      nz += (a.x - b.x) * (a.y + b.y);
-    }
-    const len = Math.hypot(nx, ny, nz) || 1;
-    faces.push({
-      pts: proj.map((q) => ({ x: q.x, y: q.y })),
-      depth,
-      ply: face.ply,
-      shade: Math.abs(dot({ x: nx / len, y: ny / len, z: nz / len }, cam.forward)),
-    });
-  }
-  // Ply first: two faces folded to the same position are ordered by which one
-  // the style declares sits on top, not by a centroid-depth coin flip between
-  // coplanar shapes. Real depth only breaks ties within the same ply.
-  const ordered = paintOrder(faces);
-
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const f of ordered) {
-    for (const q of f.pts) {
-      minX = Math.min(minX, q.x);
-      minY = Math.min(minY, q.y);
-      maxX = Math.max(maxX, q.x);
-      maxY = Math.max(maxY, q.y);
-    }
-  }
-  const pad = Math.max(maxX - minX, maxY - minY) * 0.12;
-  const sw = Math.max(maxX - minX, maxY - minY) * 0.004;
-  const body = ordered
-    .map(
-      (f) =>
-        `<path d="${d(f.pts)} Z" fill="var(--board)" fill-opacity="${(0.55 + 0.45 * f.shade).toFixed(3)}" ` +
-        `stroke="var(--board-edge)" stroke-width="${sw.toFixed(3)}" stroke-linejoin="round"/>`,
-    )
-    .join('\n');
-
-  return `<svg class="pane-canvas" viewBox="${minX - pad} ${minY - pad} ${maxX - minX + pad * 2} ${maxY - minY + pad * 2}" preserveAspectRatio="xMidYMid meet">
-${body}
-</svg>`;
+function preview3d(graph: GeometryGraph, resolved: ResolvedGeometry): string {
+  return renderFormedSvg(graph, resolved, cameraBasis(graph.upAxis), {
+    svgAttrs: 'class="pane-canvas" preserveAspectRatio="xMidYMid meet"',
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -278,7 +220,6 @@ function section(entries: Entry[], entry: Entry, active: boolean): string {
   const { compiled, resolved, id } = entry;
   const size = blankSize(resolved)!;
   const def = compiled.definition;
-  const ratio = 1;
   const formed = hasFormedShape(compiled.graph);
 
   const unfolded =
@@ -327,7 +268,7 @@ function section(entries: Entry[], entry: Entry, active: boolean): string {
     <div id="pane-3d" data-primary="3d">
       <div class="pane-grid"></div>
       <span class="pane-label">${formed ? 'Formed pack' : 'Folded'} · iso</span>
-      ${preview3d(compiled.graph, resolved, ratio)}
+      ${preview3d(compiled.graph, resolved)}
     </div>
   </div>
 </section>`;
