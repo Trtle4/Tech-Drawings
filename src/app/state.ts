@@ -73,6 +73,8 @@ export interface AppState {
   /** Overall-size dimension lines (witnesses, arrowheads, a labelled span) on the flat blank / the formed pack. View state, not content. */
   dims2d: boolean;
   dims3d: boolean;
+  /** Flap faces currently checked for a group hinge-angle edit — see flapPanel.ts. View state, not content: it names faces, not an edit. */
+  flapSelection: string[];
 }
 
 export interface StaleOverride {
@@ -139,6 +141,7 @@ export function createInitialState(styleId?: string): AppState {
     bg3d: 'theme',
     dims2d: true,
     dims3d: true,
+    flapSelection: [],
   };
 }
 
@@ -224,7 +227,7 @@ export class Store {
     if (!def) return;
     this.pushHistory();
     const compiled = compileStyle(def);
-    this.set({ styleId, params: compiled.params, ops: [], selection: null, artwork: null });
+    this.set({ styleId, params: compiled.params, ops: [], selection: null, artwork: null, flapSelection: [] });
   }
 
   setParam(id: string, value: number): void {
@@ -337,6 +340,30 @@ export class Store {
 
   setHingeAngle(faceA: string, faceB: string, angleRad: number): void {
     this.pushOp({ kind: 'set_hinge_angle', faceA, faceB, angleRad });
+  }
+
+  setFlapSelection(faceIds: string[]): void {
+    this.set({ flapSelection: faceIds });
+  }
+
+  /**
+   * Set one angle across every hinge touching any of the given faces, as a
+   * single undo step — the group-select counterpart to `setHingeAngle`,
+   * which only ever knows about one hinge at a time.
+   */
+  setHingeAnglesForFaces(faceIds: string[], angleRad: number): void {
+    const hinges = this.getDerived().resolved.hinges;
+    const ops: OverrideOp[] = [];
+    for (const faceId of faceIds) {
+      for (const hinge of hinges) {
+        if (hinge.faceA === faceId || hinge.faceB === faceId) {
+          ops.push({ kind: 'set_hinge_angle', faceA: hinge.faceA, faceB: hinge.faceB, angleRad });
+        }
+      }
+    }
+    if (ops.length === 0) return;
+    this.pushHistory();
+    this.set({ ops: [...this.state.ops, ...ops] });
   }
 
   fitToBlank(vp: Viewport): void {

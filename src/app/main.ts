@@ -5,6 +5,7 @@
 import { createInitialState, Store } from './state.js';
 import { mountPanel } from './panel.js';
 import { mountInspector } from './inspector.js';
+import { mountFlapPanel } from './flapPanel.js';
 import { mountArtworkPanel } from './artworkPanel.js';
 import { mountExportPanel } from './exportPanel.js';
 import { mountCanvas } from './canvas.js';
@@ -28,6 +29,7 @@ function boot(): void {
       <aside id="panel">
         <div id="panel-body"></div>
         <div id="inspector-body"></div>
+        <div id="flap-body"></div>
         <div id="artwork-body"></div>
         <div id="export-body"></div>
       </aside>
@@ -41,6 +43,7 @@ function boot(): void {
 
   mountPanel(root.querySelector<HTMLElement>('#panel-body')!, store);
   mountInspector(root.querySelector<HTMLElement>('#inspector-body')!, store);
+  mountFlapPanel(root.querySelector<HTMLElement>('#flap-body')!, store);
   mountArtworkPanel(root.querySelector<HTMLElement>('#artwork-body')!, store);
   mountExportPanel(root.querySelector<HTMLElement>('#export-body')!, store);
   mountCanvas(root.querySelector<HTMLElement>('#pane-2d')!, store);
