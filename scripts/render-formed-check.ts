@@ -1,7 +1,7 @@
 /**
- * Renders a style's formed 3D shape from four fixed camera angles to PNG —
- * front, side, top, three-quarter (the app's own default view) — so a
- * lofted/formed shape can be checked visually, not just against numeric
+ * Renders a style's formed 3D shape from five fixed camera angles to PNG —
+ * front, side, top, bottom, three-quarter (the app's own default view) — so
+ * a lofted/formed shape can be checked visually, not just against numeric
  * invariants. Numeric tests can pass while the render is unreadable; this is
  * the other half of validating a formed-shape change.
  *
@@ -56,6 +56,10 @@ const VIEWS: { name: string; azimuth: number; elevation: number }[] = [
   { name: 'front', azimuth: 0, elevation: 0 },
   { name: 'side', azimuth: Math.PI / 2, elevation: 0 },
   { name: 'top', azimuth: 0, elevation: (88 * Math.PI) / 180 },
+  // The mirror of 'top' — looking up from underneath, e.g. a stand-up
+  // pouch's own base and where it welds to the walls, which 'top' cannot
+  // show (it's on the far, occluded side from directly overhead).
+  { name: 'bottom', azimuth: 0, elevation: (-88 * Math.PI) / 180 },
   { name: 'three-quarter', azimuth: DEFAULT_ORBIT.azimuth, elevation: DEFAULT_ORBIT.elevation },
 ];
 
@@ -92,7 +96,11 @@ for (const view of VIEWS) {
 const params = (compiled.graph.meta?.params as Record<string, number>) ?? {};
 const byRole = new Map(resolved.faces.map((f) => [f.role, f]));
 const bodyRoles = ['front_panel', 'back_panel_left', 'back_panel_right'];
-const crimpCapRoles = ['front_end_bottom', 'back_left_end_bottom', 'back_right_end_bottom'];
+// The TOP band, not the bottom — a style may fold its bottom band back
+// against the body (see bag-block-bottom.ts), which moves its formed points
+// well away from its own flat-pattern y. The top band is a plain hanging
+// crimp for every style that has one, so measuring there is safe uniformly.
+const crimpCapRoles = ['front_end_top', 'back_left_end_top', 'back_right_end_top'];
 
 if (
   bodyRoles.every((r) => byRole.has(r)) &&
@@ -117,11 +125,12 @@ if (
   // Crimp band height: a grid fact, independent of the loft — the flat
   // pattern's own y-extent for the crimp cap cell, not something the 3D
   // engine could get wrong without also breaking the dieline.
-  const crimpBnd = boundsOf(byRole.get('front_end_bottom')!.outer.points)!;
+  const crimpBnd = boundsOf(byRole.get('front_end_top')!.outer.points)!;
   const measuredCrimpHeight = crimpBnd.max.y - crimpBnd.min.y;
 
   const midY = params.bagL / 2;
-  const crimpPts = near(crimpPoints, crimpBnd.min.y, 1);
+  // The band's own free (non-hinge) edge — the top band's is its max.y.
+  const crimpPts = near(crimpPoints, crimpBnd.max.y, 1);
   // The row grid's spacing depends on each style's own body height (see
   // rowsForHeight in formedShape.ts), so a fixed tolerance can miss the
   // nearest sampled row entirely for a style whose body doesn't divide it
@@ -162,11 +171,13 @@ if (
   const vb = /viewBox="([^"]+)"/.exec(sideSvg)![1]!.split(' ').map(Number) as [number, number, number, number];
   const [vx, vy, vw, vh] = vb;
 
+  // crimpBnd.max.y is the top band's own free (non-hinge) edge — where
+  // crimpPts was actually sampled from, above.
   const p = (v: { x: number; y: number; z: number }) => project(v, cam);
-  const crimpTopL = p({ x: 0, y: crimpBnd.min.y, z: -measuredCrimpThickness / 2 });
-  const crimpTopR = p({ x: 0, y: crimpBnd.min.y, z: measuredCrimpThickness / 2 });
-  const crimpBotY = p({ x: 0, y: crimpBnd.max.y, z: 0 }).y;
-  const crimpTopY = p({ x: 0, y: crimpBnd.min.y, z: 0 }).y;
+  const crimpTopL = p({ x: 0, y: crimpBnd.max.y, z: -measuredCrimpThickness / 2 });
+  const crimpTopR = p({ x: 0, y: crimpBnd.max.y, z: measuredCrimpThickness / 2 });
+  const crimpBotY = p({ x: 0, y: crimpBnd.min.y, z: 0 }).y;
+  const crimpTopY = p({ x: 0, y: crimpBnd.max.y, z: 0 }).y;
   const midL = p({ x: 0, y: midY, z: -measuredDepthAtMid / 2 });
   const midR = p({ x: 0, y: midY, z: measuredDepthAtMid / 2 });
 

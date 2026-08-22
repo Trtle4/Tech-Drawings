@@ -1,16 +1,18 @@
 import type { StyleDefinition } from '../schema.js';
 
 /**
- * Block-bottom (SOS / satchel) gusseted bag — fin seal, flat box base.
+ * Block-bottom (fold-under) gusseted bag — fin seal.
  *
- * The SAME side-gusseted tube as bag-gusseted.ts — a pillow bag with a V-fold
- * gusset in each side, forming a rectangular tube W wide by D deep — but
- * closed differently at the two ends. The top is a simple crimped seal, same
- * as the gusseted bag's own top. The BOTTOM is not a crimp at all: it is a
- * flat rectangular box floor, the tube's own corners folded inward and up a
- * short distance (`bagD/2*0.5`) before the walls take over as a boxy,
- * rounded-rectangle body — the shape a paper grocery sack or a block-bottom
- * coffee bag actually has, not a pinched flat band.
+ * Structurally IDENTICAL to bag-gusseted.ts — same grid, same params, same
+ * lofted cross-section (superellipse, girth-conserving, dog-eared crimp
+ * bands) — because it is the same bag. The only difference is what happens
+ * to the BOTTOM crimp band once it's sealed: instead of hanging off the
+ * bottom the way the top seal does, it folds back 180° at the hinge where
+ * it meets the round body, and lies flat against it — a real, common
+ * construction (a "fold-under" or "pinch and fold" bottom), not a
+ * separately-built flat box floor. Front view should read almost exactly
+ * like the gusseted bag, but with a visible folded tab at the bottom instead
+ * of a band hanging past the last row of body panels.
  *
  *   columns   fin(F) | back½(W/2) | gusset_l_back(D/2) | gusset_l_front(D/2)
  *             | FRONT(W) |
@@ -20,21 +22,20 @@ import type { StyleDefinition } from '../schema.js';
  *
  * Folds to the LAY-FLAT bag, as the gusseted bag does — 180° at every tube
  * fold so the gussets tuck flat between front and back, 90° at each fin so
- * the two fin strips stand face to face. Extents are W × L × F. The formed,
- * filled shape (flat base, boxy body, corner folds running up from the base,
- * crimped top) is out of scope for the rigid fold and lives in formedShape.
+ * the two fin strips stand face to face. Extents are W × L × F. The fold-back
+ * of the bottom band is out of scope for the rigid fold and lives entirely
+ * in formedShape, as a y remap — the band's own cross-section shape is
+ * untouched, only where it ends up in the assembled bag.
  *
  * ASSUMPTIONS TO CHECK: gusset depth D is the formed front-to-back depth, and
- * each gusset contributes D of flat material folded at its centre. The top
- * end seal counts inside the cutoff length; the base fold's own height does
- * not reduce the fill capacity (real construction glues/tucks it, using no
- * NET extra length beyond the tube's own bottom row).
+ * each gusset contributes D of flat material folded at its centre. Both end
+ * seals count inside the cutoff length.
  */
 export const bagBlockBottom: StyleDefinition = {
   id: 'bag.block_bottom',
   name: 'Block-Bottom Bag',
   family: 'bag',
-  description: 'Side-gusseted, fin-seal bag with a flat rectangular block bottom and a crimped top seal.',
+  description: 'Side-gusseted, fin-seal bag whose bottom crimp seal folds back flat against the body instead of hanging past it.',
 
   // Same reasoning as the other wrap-style bags: vertical wrap creases leave y alone.
   upAxis: 'y',
@@ -58,7 +59,7 @@ export const bagBlockBottom: StyleDefinition = {
       default: 60,
       min: 10,
       step: 1,
-      hint: 'Formed front-to-back depth, and the flat base’s own depth.',
+      hint: 'Formed front-to-back depth.',
     },
     {
       id: 'bagL',
@@ -68,7 +69,7 @@ export const bagBlockBottom: StyleDefinition = {
       default: 280,
       min: 60,
       step: 1,
-      hint: 'Cutoff length, including the top end seal and the base fold.',
+      hint: 'Cutoff length, including both end seal bands.',
     },
     {
       id: 'caliper',
@@ -83,7 +84,7 @@ export const bagBlockBottom: StyleDefinition = {
     { id: 'finSeal', label: 'Fin seal', group: 'allowance', unit: 'mm', default: 10, min: 3 },
     {
       id: 'endSeal',
-      label: 'Top end seal',
+      label: 'End seal',
       group: 'allowance',
       unit: 'mm',
       default: 14,
@@ -105,11 +106,8 @@ export const bagBlockBottom: StyleDefinition = {
       { id: 'fin_r', size: 'finSeal' },
     ],
     rows: [
-      // Not a crimp band — the tube's own corner-fold zone into the flat
-      // base. Sized off bagD, the natural scale for how far a real
-      // block-bottom's corner fold runs up the bag.
-      { id: 'end_bottom', size: 'bagD/2*0.5' },
-      { id: 'body', size: 'bagL - endSeal - bagD/2*0.5' },
+      { id: 'end_bottom', size: 'endSeal' },
+      { id: 'body', size: 'bagL - 2*endSeal' },
       { id: 'end_top', size: 'endSeal' },
     ],
     cells: [
@@ -123,15 +121,15 @@ export const bagBlockBottom: StyleDefinition = {
       { row: 'body', col: 'back_r', role: 'back_panel_right', kind: 'panel' },
       { row: 'body', col: 'fin_r', role: 'fin_right', kind: 'seal' },
 
-      { row: 'end_bottom', col: 'fin_l', role: 'fin_left_base', kind: 'seal' },
-      { row: 'end_bottom', col: 'back_l', role: 'back_left_base', kind: 'panel' },
-      { row: 'end_bottom', col: 'gusset_l_back', role: 'gusset_left_back_base', kind: 'panel' },
-      { row: 'end_bottom', col: 'gusset_l_front', role: 'gusset_left_front_base', kind: 'panel' },
-      { row: 'end_bottom', col: 'front', role: 'front_base', kind: 'panel' },
-      { row: 'end_bottom', col: 'gusset_r_front', role: 'gusset_right_front_base', kind: 'panel' },
-      { row: 'end_bottom', col: 'gusset_r_back', role: 'gusset_right_back_base', kind: 'panel' },
-      { row: 'end_bottom', col: 'back_r', role: 'back_right_base', kind: 'panel' },
-      { row: 'end_bottom', col: 'fin_r', role: 'fin_right_base', kind: 'seal' },
+      { row: 'end_bottom', col: 'fin_l', role: 'fin_left_end_bottom', kind: 'seal' },
+      { row: 'end_bottom', col: 'back_l', role: 'back_left_end_bottom', kind: 'seal' },
+      { row: 'end_bottom', col: 'gusset_l_back', role: 'gusset_left_back_end_bottom', kind: 'seal' },
+      { row: 'end_bottom', col: 'gusset_l_front', role: 'gusset_left_front_end_bottom', kind: 'seal' },
+      { row: 'end_bottom', col: 'front', role: 'front_end_bottom', kind: 'seal' },
+      { row: 'end_bottom', col: 'gusset_r_front', role: 'gusset_right_front_end_bottom', kind: 'seal' },
+      { row: 'end_bottom', col: 'gusset_r_back', role: 'gusset_right_back_end_bottom', kind: 'seal' },
+      { row: 'end_bottom', col: 'back_r', role: 'back_right_end_bottom', kind: 'seal' },
+      { row: 'end_bottom', col: 'fin_r', role: 'fin_right_end_bottom', kind: 'seal' },
 
       { row: 'end_top', col: 'fin_l', role: 'fin_left_end_top', kind: 'seal' },
       { row: 'end_top', col: 'back_l', role: 'back_left_end_top', kind: 'seal' },
@@ -150,49 +148,82 @@ export const bagBlockBottom: StyleDefinition = {
     ],
   },
 
-  // Same lofted-cross-section engine as the other bags (see formedShape.ts),
-  // on the `rounded_rect` profile: a true rounded rectangle, not a
-  // superellipse's continuously-curving approximation — a boxy body needs
-  // FLAT sides meeting a genuine constant-radius corner, and a flat-bottomed
-  // box base is that SAME family with its corner radius shrunk to 0 at one
-  // station, not a different code path.
-  //
-  // halfWidth is explicit (bagW/2) at every station, never derived — the
-  // base is a real, separately-built flat panel in a block-bottom bag, not
-  // girth-conserving excess the way a pillow's crimp is, so there is no
-  // dog-ear flare to build here; the tube simply holds its own width.
+  // Byte-for-byte the gusseted bag's own loft (see bag-gusseted.ts) — same
+  // stations, same superellipse sharpness, same girth-derived halfWidth and
+  // dog-eared crimp bands — plus one addition: faceWorldY folds the BOTTOM
+  // band's own output y back across its hinge with the body (y = endSeal)
+  // instead of leaving it running out past y = 0. The band's own
+  // cross-section (x, z) is computed exactly as it would be for a normal
+  // hanging crimp band — surfaceAt only ever sees flat y, never the remapped
+  // one — so this is purely a placement change, not a different shape.
   formedShape: {
     kind: 'lofted_profile',
     faceRoles: [
-      'front_panel', 'front_base', 'front_end_top',
-      'back_panel_left', 'back_left_base', 'back_left_end_top',
-      'back_panel_right', 'back_right_base', 'back_right_end_top',
-      'gusset_left_front', 'gusset_left_front_base', 'gusset_left_front_end_top',
-      'gusset_left_back', 'gusset_left_back_base', 'gusset_left_back_end_top',
-      'gusset_right_front', 'gusset_right_front_base', 'gusset_right_front_end_top',
-      'gusset_right_back', 'gusset_right_back_base', 'gusset_right_back_end_top',
+      'front_panel', 'front_end_bottom', 'front_end_top',
+      'back_panel_left', 'back_left_end_bottom', 'back_left_end_top',
+      'back_panel_right', 'back_right_end_bottom', 'back_right_end_top',
+      'gusset_left_front', 'gusset_left_front_end_bottom', 'gusset_left_front_end_top',
+      'gusset_left_back', 'gusset_left_back_end_bottom', 'gusset_left_back_end_top',
+      'gusset_right_front', 'gusset_right_front_end_bottom', 'gusset_right_front_end_top',
+      'gusset_right_back', 'gusset_right_back_end_bottom', 'gusset_right_back_end_top',
     ],
     flapFaceRoles: [
-      'fin_left', 'fin_left_base', 'fin_left_end_top',
-      'fin_right', 'fin_right_base', 'fin_right_end_top',
+      'fin_left', 'fin_left_end_bottom', 'fin_left_end_top',
+      'fin_right', 'fin_right_end_bottom', 'fin_right_end_top',
     ],
     flapFold: 'left',
     sealStyle: 'fin',
     girthPhaseDeg: -90,
+    // Every bottom-band role has the SAME flat y-range (0..endSeal, with
+    // endSeal — the hinge, shared with the body — its own max.y), so the
+    // same reflection pair applies to all of them: y = endSeal stays put,
+    // y = 0 (the band's own free edge) swings across it to 2*endSeal —
+    // INTO the body's own y-range, where the fold physically lands it,
+    // instead of past y = 0 where an un-folded band would hang.
+    faceWorldY: {
+      front_end_bottom: ['2*endSeal', 'endSeal'],
+      back_left_end_bottom: ['2*endSeal', 'endSeal'],
+      back_right_end_bottom: ['2*endSeal', 'endSeal'],
+      gusset_left_back_end_bottom: ['2*endSeal', 'endSeal'],
+      gusset_left_front_end_bottom: ['2*endSeal', 'endSeal'],
+      gusset_right_front_end_bottom: ['2*endSeal', 'endSeal'],
+      gusset_right_back_end_bottom: ['2*endSeal', 'endSeal'],
+      fin_left_end_bottom: ['2*endSeal', 'endSeal'],
+      fin_right_end_bottom: ['2*endSeal', 'endSeal'],
+    },
+    // The fold-back alone (faceWorldY, above) repositions the bottom band's
+    // points in y but leaves its (x, z) cross-section exactly as a normal
+    // hanging crimp band would have it — nearly flat, nearly z = 0 — which
+    // is also where the body panel it now overlaps in y already sits, so
+    // the two surfaces coincide and the fold reads as "missing" rather than
+    // "folded flat against the body". Nudging the band toward the back pole
+    // (negative z, this engine's convention) separates it enough to
+    // paint-sort as a real, glued tab lying against the body — visible as a
+    // distinct crease/seam line from the front, hidden behind the body from
+    // the back, the way the actual folded seal occludes. Sized off bagD
+    // (capped at 3mm) rather than caliper, since caliper alone (a fraction
+    // of a mm) is invisible at this scale.
+    faceDepthOffset: {
+      front_end_bottom: '-min(3, bagD*0.05)',
+      back_left_end_bottom: '-min(3, bagD*0.05)',
+      back_right_end_bottom: '-min(3, bagD*0.05)',
+      gusset_left_back_end_bottom: '-min(3, bagD*0.05)',
+      gusset_left_front_end_bottom: '-min(3, bagD*0.05)',
+      gusset_right_front_end_bottom: '-min(3, bagD*0.05)',
+      gusset_right_back_end_bottom: '-min(3, bagD*0.05)',
+      fin_left_end_bottom: '-min(3, bagD*0.05)',
+      fin_right_end_bottom: '-min(3, bagD*0.05)',
+    },
     stations: [
-      // The flat base itself: full depth, sharp (unrounded) corners — a real
-      // box floor's own corners are creases, not roundovers.
-      { y: '0', halfWidth: 'bagW/2', halfDepth: 'bagD/2', profile: { family: 'rounded_rect', cornerRadius: 0 } },
-      // Corner folds running up from the base: over the short transition
-      // zone the row itself is sized for, the corner radius opens from 0 to
-      // the body's own rounding — the fold reading as the corner visibly
-      // turning over as you move up from the flat floor.
-      { y: 'bagD/2*0.5', halfWidth: 'bagW/2', halfDepth: 'bagD/2', profile: { family: 'rounded_rect', cornerRadius: 'bagD*0.25' } },
-      { y: 'bagL - endSeal - (bagL - endSeal - bagD/2*0.5)*0.15', halfWidth: 'bagW/2', halfDepth: 'bagD/2', profile: { family: 'rounded_rect', cornerRadius: 'bagD*0.25' } },
-      { y: 'bagL - endSeal', halfWidth: 'bagW/2', halfDepth: 'max(caliper, bagD*0.06)', profile: { family: 'rounded_rect', cornerRadius: 'bagD*0.25' } },
-      { y: 'bagL', halfWidth: 'bagW/2', halfDepth: 'max(caliper, bagD*0.06)', profile: { family: 'rounded_rect', cornerRadius: 'bagD*0.25' } },
+      { y: '0', halfDepth: 'max(caliper, bagD*0.06)', profile: { family: 'superellipse', sharpness: 10 } },
+      { y: 'endSeal', halfDepth: 'max(caliper, bagD*0.06)', profile: { family: 'superellipse', sharpness: 10 } },
+      { y: 'endSeal + (bagL - 2*endSeal)*0.15', halfDepth: 'bagD/2*0.92', profile: { family: 'superellipse', sharpness: 10 } },
+      { y: 'bagL/2', halfDepth: 'bagD/2', profile: { family: 'superellipse', sharpness: 10 } },
+      { y: 'bagL - endSeal - (bagL - 2*endSeal)*0.15', halfDepth: 'bagD/2*0.92', profile: { family: 'superellipse', sharpness: 10 } },
+      { y: 'bagL - endSeal', halfDepth: 'max(caliper, bagD*0.06)', profile: { family: 'superellipse', sharpness: 10 } },
+      { y: 'bagL', halfDepth: 'max(caliper, bagD*0.06)', profile: { family: 'superellipse', sharpness: 10 } },
     ],
-    fill: '0.85',
+    fill: '0.8',
   },
 
   seals: [
@@ -205,13 +236,11 @@ export const bagBlockBottom: StyleDefinition = {
       plies: 2,
     },
     {
-      id: 'bag.block_bottom:base',
+      id: 'bag.block_bottom:end_bottom',
       kind: 'fin',
-      role: 'base_fold',
-      boundFaceRoles: ['front_base', 'back_left_base', 'back_right_base'],
-      width: 'bagD/2*0.5',
-      // Six plies through the gusset corner fold, where four layers of film
-      // are tucked and glued flat.
+      role: 'bottom_end_seal',
+      boundFaceRoles: ['front_end_bottom', 'back_left_end_bottom', 'back_right_end_bottom'],
+      width: 'endSeal',
       plies: 6,
     },
     {

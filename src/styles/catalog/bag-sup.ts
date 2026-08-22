@@ -178,7 +178,12 @@ export const bagSup: StyleDefinition = {
   ],
 
   extraSeeds: [
-    // Front on top of the 2D layout, at the high-y end of the web.
+    // Front on top of the 2D layout, at the high-y end of the web. `ply`
+    // still marks front above back (it's what's visible from outside when
+    // the bag lies flat, at fill = 0) — paintOrder itself is what needed
+    // fixing, not this declaration: see the comment on `paintOrder` in
+    // iso.ts for why ply no longer overrides a REAL depth separation, only
+    // a near-coplanar one.
     { role: 'front_panel', point: pt('S + W/2', `${GUSSET_HI} + L/2`), kind: 'panel', ply: 1 },
     { role: 'front_seal_left', point: pt('S/2', `${GUSSET_HI} + L/2`), kind: 'seal' },
     { role: 'front_seal_right', point: pt(`S + W + S/2`, `${GUSSET_HI} + L/2`), kind: 'seal' },

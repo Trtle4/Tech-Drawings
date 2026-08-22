@@ -399,6 +399,22 @@ export interface FormedShapeSpec {
    */
   faceWorldY?: Record<string, [Expr, Expr]>;
   /**
+   * `lofted_profile` only: a constant mm offset added to a round face's own
+   * z, keyed by role — a straight nudge along the loft's own depth axis, on
+   * top of whatever `surfaceAt` already gives it. Together with
+   * `faceWorldY`, this is what turns "swept back along y" into "actually
+   * folded flat against a panel": a folded band that only moved in y would
+   * sit almost exactly where the body panel it now overlaps already is
+   * (both being thin near a crimp), reading as invisible rather than
+   * folded. Nudging it toward whichever side it's meant to lie against
+   * (negative toward the back pole, positive toward the front, in this
+   * engine's own convention) separates the two surfaces enough to paint-sort
+   * correctly — hidden behind the panel it's folded under when viewed from
+   * the far side, visible in front of it from the near side — the way a
+   * real folded, glued tab actually occludes.
+   */
+  faceDepthOffset?: Record<string, Expr>;
+  /**
    * `lofted_profile` only: explicit girth-fraction t a flap face attaches
    * at, keyed by role. Overrides the default auto-detection (nearest of
    * girthX0/girthX1 to the flap's own flat-x span), which — like the

@@ -87,19 +87,39 @@ export function project(p: Vec3, cam: CameraBasis): Projected2D {
 }
 
 /**
- * Paint order for a set of faces: ply first, camera depth as the tie-break.
+ * Paint order for a set of facets: real camera depth, with ply as a
+ * tie-break for facets that are effectively coplanar.
  *
- * Two faces at the same ply are ordered by real depth, which is correct for
- * faces that do not overlap on screen (the common case) and reasonable for
- * ones that do. Two faces at different ply are ordered by ply regardless of
- * depth — this is deliberate. A minor flap and a major flap folded to the same
- * position are geometrically coplanar, so their CENTROID-averaged camera depth
- * is close to a coin flip between shapes of different size and footprint; ply
- * is the style's explicit statement of which one actually sits on top, and
- * must win over that noise.
+ * Ply exists for a genuinely ambiguous case: a minor flap and a major flap
+ * folded to the same position are geometrically coplanar, so their
+ * CENTROID-averaged camera depth is close to a coin flip between shapes of
+ * different size and footprint — ply is the style's explicit statement of
+ * which one actually sits on top there. But that reasoning only holds when
+ * the depths really are close. A `lofted_profile` face (a stand-up pouch's
+ * front and back panel, say) can carry a ply too, set for exactly that
+ * flat-folded case — yet at any real fill it sweeps through a wide, genuinely
+ * separated depth range along its own length, not a fixed offset from its
+ * counterpart. Letting ply win there regardless of depth (as a strict
+ * primary sort key would) pins one face permanently "on top" even from a
+ * camera angle where the far side of it should visibly be occluded by
+ * something nearer — a top or bottom view being exactly that angle for a
+ * pouch's front/back split. So ply only overrides depth within a small
+ * coplanarity tolerance, scaled to this call's own depth range; outside it,
+ * real depth decides, the same as same-ply facets always have.
  */
 export function paintOrder<T extends { ply: number; depth: number }>(faces: T[]): T[] {
-  return [...faces].sort((a, b) => a.ply - b.ply || a.depth - b.depth);
+  let minD = Infinity;
+  let maxD = -Infinity;
+  for (const f of faces) {
+    if (f.depth < minD) minD = f.depth;
+    if (f.depth > maxD) maxD = f.depth;
+  }
+  const coplanarEps = (maxD - minD) * 0.02;
+  return [...faces].sort((a, b) => {
+    const dd = a.depth - b.depth;
+    if (Math.abs(dd) > coplanarEps) return dd;
+    return a.ply - b.ply || dd;
+  });
 }
 
 /** One projected, shaded, paintable patch — a facet of a `FormedFace`, ready to draw. */

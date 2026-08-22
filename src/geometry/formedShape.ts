@@ -690,6 +690,7 @@ function loftedProfile(
     edgeT: number,
     zSign: number,
     worldYOf: (flatY: number) => number,
+    depthOffset = 0,
   ): { facets: FormedFacet[]; outline: Vec3[] } | null => {
     const rows = rowsForHeight(bnd.max.y - bnd.min.y);
     const grid: { p: Vec3; uv: Vec2 }[][] = [];
@@ -701,7 +702,7 @@ function loftedProfile(
       maxExcess = Math.max(maxExcess, excess);
       const base = surfaceAt(y, edgeT);
       const foldDir = base.x >= 0 ? -1 : 1; // toward x = 0, the panel's own centre
-      const outer: Vec3 = { x: base.x, y: worldY, z: base.z + zSign * thickness };
+      const outer: Vec3 = { x: base.x, y: worldY, z: base.z + depthOffset + zSign * thickness };
       const inner: Vec3 = { x: base.x + foldDir * excess, y: worldY, z: outer.z };
       grid.push([
         { p: outer, uv: { x: bnd.min.x, y } },
@@ -716,9 +717,14 @@ function loftedProfile(
     const bnd = boundsOf(face.outer.points)!;
     const span = spec.faceAngularSpan?.[face.role];
     const worldYOf = (flatY: number) => worldYOfFace(face.role, bnd, flatY);
+    const depthOffsetExpr = spec.faceDepthOffset?.[face.role];
+    const depthOffset = depthOffsetExpr ? lerp(0, evalExpr(depthOffsetExpr, scope), fill) : 0;
     const grid = sampleGrid(
       bnd,
-      (x, y) => surfaceAt(y, angleOfFace(face.role, bnd, x)),
+      (x, y) => {
+        const p = surfaceAt(y, angleOfFace(face.role, bnd, x));
+        return { x: p.x, z: p.z + depthOffset };
+      },
       span ? Math.abs(span[1] - span[0]) : undefined,
       worldYOf,
     );
@@ -731,14 +737,14 @@ function loftedProfile(
     const faceZ = surfaceAt(midY, (t0 + t1) / 2).z;
     const zSign = faceZ === 0 ? 1 : Math.sign(faceZ);
     if (!isSeamT(t0)) {
-      const flap = dogEarFlap(bnd, t0, zSign, worldYOf);
+      const flap = dogEarFlap(bnd, t0, zSign, worldYOf, depthOffset);
       if (flap) {
         facets.push(...flap.facets);
         outline.push(flap.outline);
       }
     }
     if (!isSeamT(t1)) {
-      const flap = dogEarFlap(bnd, t1, zSign, worldYOf);
+      const flap = dogEarFlap(bnd, t1, zSign, worldYOf, depthOffset);
       if (flap) {
         facets.push(...flap.facets);
         outline.push(flap.outline);
@@ -785,10 +791,22 @@ function loftedProfile(
         const flatX = bnd.min.x + ((bnd.max.x - bnd.min.x) * i) / cols;
         const nx = (flatX - cx) / halfW;
         const t = t0 + ((nx + 1) / 2) * (t1 - t0);
+        // `surfaceAt` already blends flat-to-lofted internally by `fill`, so
+        // `rim` is the wall's own CURRENT edge at this fill — not its fully
+        // -open one. Welding to it (and to the wall's own always-assembled
+        // `worldWeldY`, which `worldYOfFace` never fill-blends either)
+        // directly, with no second `lerp(..., fill)` on top, is what keeps
+        // the hinge on the rim at every fill, not just fill = 1. The
+        // earlier per-point lerp toward `flatX`/`flatY` double-applied fill
+        // (once inside `rim`, once again here) and pulled the hinge's own Y
+        // toward the floor's flat-pattern y, which the wall's edge never
+        // uses at all — tearing the weld open at any fill short of fully
+        // flat or fully open, and hollowing out exactly this base at a
+        // partial fill like a stand-up pouch's own default.
         const rim = surfaceAt(weldY, t);
-        const x = lerp(flatX, rim.x, fill);
-        const y = lerp(flatY, worldWeldY, fill);
-        const z = lerp(0, rim.z * (1 - s), fill);
+        const x = rim.x;
+        const y = worldWeldY;
+        const z = rim.z * (1 - s);
         row.push({ p: { x, y, z }, uv: { x: flatX, y: flatY } });
       }
       grid.push(row);
