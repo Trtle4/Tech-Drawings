@@ -74,6 +74,8 @@ export interface AppState {
   /** Overall-size dimension lines (witnesses, arrowheads, a labelled span) on the flat blank / the formed pack. View state, not content. */
   dims2d: boolean;
   dims3d: boolean;
+  /** When on, the 3D pane's dimension lines measure the assembled pack's true outside envelope (raw geometry padded by `graph.caliper` on each wall) instead of the raw modeled/mid-plane bounding box. No effect unless `dims3d` is also on. */
+  outsideDims3d: boolean;
   /** Flap faces currently checked for a group hinge-angle edit — see flapPanel.ts. View state, not content: it names faces, not an edit. */
   flapSelection: string[];
   /** Display unit for dimension callouts (2D, 3D, PNG export) — mm everywhere internally, this only changes the text. */
@@ -146,6 +148,7 @@ export function createInitialState(styleId?: string): AppState {
     dims3d: true,
     flapSelection: [],
     unit: 'mm',
+    outsideDims3d: false,
   };
 }
 
@@ -283,6 +286,10 @@ export class Store {
 
   setUnit(unit: LengthUnit): void {
     this.set({ unit });
+  }
+
+  setOutsideDims3D(on: boolean): void {
+    this.set({ outsideDims3d: on });
   }
 
   pushOp(op: OverrideOp): void {

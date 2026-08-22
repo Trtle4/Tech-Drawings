@@ -40,6 +40,7 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
     <canvas class="pane-canvas" id="pane3d-canvas"></canvas>
     <div class="viewport-toolbar">
       <button class="tbtn" id="pane3d-dims" title="Overall width/height/depth dimension lines">Dims</button>
+      <button class="tbtn" id="pane3d-outside" title="Measure the outside of the assembled pack (adds the material's board caliper to each wall) instead of the raw modeled envelope">Outside</button>
       <button class="tbtn icon" id="pane3d-bg" title="Toggle white background">⬜</button>
       <button class="tbtn icon" id="pane3d-reset" title="Reset to iso view">⤢</button>
     </div>`;
@@ -49,13 +50,20 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
   const resetBtn = container.querySelector<HTMLButtonElement>('#pane3d-reset')!;
   const bgBtn = container.querySelector<HTMLButtonElement>('#pane3d-bg')!;
   const dimsBtn = container.querySelector<HTMLButtonElement>('#pane3d-dims')!;
+  const outsideBtn = container.querySelector<HTMLButtonElement>('#pane3d-outside')!;
 
   function viewport(): Viewport {
     const r = canvas.getBoundingClientRect();
     return { width: r.width || 1, height: r.height || 1 };
   }
 
-  /** The world-space (mm) axis-aligned bounding box of every point in the formed/folded shape — the "outside dimensions" this pane's own dimension lines measure. */
+  /**
+   * The world-space (mm) axis-aligned bounding box of every point in the
+   * formed/folded shape — the raw modeled envelope, at the panel geometry's
+   * own mid-plane (nothing here models material thickness; see
+   * `expandOutside` for the true outside envelope the "Outside" toggle
+   * shows instead).
+   */
   function worldBoundsOf(formed: Map<string, FormedFace>): { min: Vec3; max: Vec3 } | null {
     let minX = Infinity;
     let minY = Infinity;
@@ -76,6 +84,22 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
       }
     }
     return Number.isFinite(minX) ? { min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ } } : null;
+  }
+
+  /**
+   * Pads a raw (mid-plane) bounding box out to the assembled pack's true
+   * outside envelope: one wall thickness (`graph.caliper`) added past each
+   * of the box's six faces, so every axis grows by `2 * caliper` — the
+   * standard inside-to-outside relationship for single-ply walls. `ply`
+   * itself carries no spatial offset anywhere in this codebase (it is
+   * paint-order metadata only, see `iso.ts`'s `paintOrder`), so this is
+   * deliberately a single global caliper padding, not a per-ply sum.
+   */
+  function expandOutside(b: { min: Vec3; max: Vec3 }, caliper: number): { min: Vec3; max: Vec3 } {
+    return {
+      min: { x: b.min.x - caliper, y: b.min.y - caliper, z: b.min.z - caliper },
+      max: { x: b.max.x + caliper, y: b.max.y + caliper, z: b.max.z + caliper },
+    };
   }
 
   /** Project the current derived geometry at a given orbit orientation — pure, no DOM writes. */
@@ -250,6 +274,7 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
     label.textContent = `${formed ? 'Formed pack' : 'Folded'} · orbit`;
     bgBtn.classList.toggle('on', state.bg3d === 'white');
     dimsBtn.classList.toggle('on', state.dims3d);
+    outsideBtn.classList.toggle('on', state.outsideDims3d);
 
     const vp = viewport();
     const dpr = window.devicePixelRatio || 1;
@@ -312,7 +337,9 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
     }
 
     if (state.dims3d && worldBounds) {
-      paintDimensions3D(worldBounds, cam, view, vp, themeColor('--l-dimension', '#0f6e77'), state.unit);
+      const caliper = store.getDerived().graph.caliper;
+      const dimsBounds = state.outsideDims3d ? expandOutside(worldBounds, caliper) : worldBounds;
+      paintDimensions3D(dimsBounds, cam, view, vp, themeColor('--l-dimension', '#0f6e77'), state.unit);
     }
   }
 
@@ -376,6 +403,7 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
   resetBtn.addEventListener('click', () => resetToIso());
   bgBtn.addEventListener('click', () => store.setBg3D(store.getState().bg3d === 'white' ? 'theme' : 'white'));
   dimsBtn.addEventListener('click', () => store.setDims3D(!store.getState().dims3d));
+  outsideBtn.addEventListener('click', () => store.setOutsideDims3D(!store.getState().outsideDims3d));
 
   // A style switch (or the very first mount) can put the content anywhere in
   // projected space — the pan/zoom from whatever was framed before has no
