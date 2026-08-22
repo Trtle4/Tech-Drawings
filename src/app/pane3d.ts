@@ -4,17 +4,25 @@
  * CSS size, not which DOM/JS it is, so interaction here applies to both for
  * free.
  *
+ * Renders to a `<canvas>`, not SVG — the artwork round trip needs a true
+ * per-triangle affine texture warp (`ctx.transform` + `drawImage`, clipped
+ * per triangle), which Canvas2D does natively and cheaply; an SVG
+ * equivalent would mean one `<image>` + one `<clipPath>` DOM node per
+ * triangle, for a mesh that can run into the thousands once a curved bag is
+ * tessellated. No interactive feature here ever depended on picking a
+ * specific SVG element (orbit/pan/zoom all work from raw pointer
+ * coordinates), so the switch costs nothing functionally.
+ *
  * Re-renders on every store change, so a dragged line, a retyped crease, a
- * dimension edit or a hinge-angle edit from the inspector all show up here
- * without any extra wiring at the call site.
+ * dimension edit, a hinge-angle edit or applied/removed artwork all show up
+ * here without any extra wiring at the call site.
  */
 import type { Vec2 } from '../geometry/types.js';
 import { computeFormedShape, hasFormedShape } from '../geometry/formedShape.js';
 import { cameraBasis, projectFormedFaces, type ProjectedFacet } from '../render/iso.js';
+import { mmToPx, pixelFrame, triangleAffine, type PixelFrame } from '../render/texture.js';
 import { fitToBounds, modelToScreen, pan as panView, zoomAt, type Viewport } from './camera2d.js';
-import { DEFAULT_ORBIT, type Store } from './state.js';
-
-const d = (pts: Vec2[]) => `M ${pts.map((p) => `${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' L ')}`;
+import { DEFAULT_ORBIT, type ArtworkState, type Store } from './state.js';
 
 const ELEVATION_LIMIT = (89 * Math.PI) / 180;
 const ORBIT_SENSITIVITY = Math.PI / 300; // radians per screen px
@@ -28,16 +36,19 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
   container.innerHTML = `
     <div class="pane-grid"></div>
     <span class="pane-label" id="pane3d-label">Folded · iso</span>
-    <svg class="pane-canvas" id="pane3d-svg"></svg>
+    <canvas class="pane-canvas" id="pane3d-canvas"></canvas>
     <div class="viewport-toolbar">
+      <button class="tbtn icon" id="pane3d-bg" title="Toggle white background">⬜</button>
       <button class="tbtn icon" id="pane3d-reset" title="Reset to iso view">⤢</button>
     </div>`;
-  const svg = container.querySelector<SVGSVGElement>('#pane3d-svg')!;
+  const canvas = container.querySelector<HTMLCanvasElement>('#pane3d-canvas')!;
+  const ctx = canvas.getContext('2d')!;
   const label = container.querySelector<HTMLSpanElement>('#pane3d-label')!;
   const resetBtn = container.querySelector<HTMLButtonElement>('#pane3d-reset')!;
+  const bgBtn = container.querySelector<HTMLButtonElement>('#pane3d-bg')!;
 
   function viewport(): Viewport {
-    const r = svg.getBoundingClientRect();
+    const r = canvas.getBoundingClientRect();
     return { width: r.width || 1, height: r.height || 1 };
   }
 
@@ -79,46 +90,153 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
     store.setCamera3D({ azimuth, elevation, view });
   }
 
+  let cssVars: CSSStyleDeclaration | null = null;
+  function themeColor(name: string, fallback: string): string {
+    cssVars ??= getComputedStyle(container);
+    const v = cssVars.getPropertyValue(name).trim();
+    return v || fallback;
+  }
+
+  /** One facet's fill: the plain board colour, then the artwork texture (if any) blended over it at the same shade-derived strength. */
+  function paintFacet(f: ProjectedFacet, screenPts: Vec2[], opacity: number, boardColor: string, artwork: ArtworkState | null, frame: PixelFrame | null): void {
+    ctx.beginPath();
+    ctx.moveTo(screenPts[0]!.x, screenPts[0]!.y);
+    for (let i = 1; i < screenPts.length; i++) ctx.lineTo(screenPts[i]!.x, screenPts[i]!.y);
+    ctx.closePath();
+    ctx.globalAlpha = opacity;
+    ctx.fillStyle = boardColor;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    if (artwork && frame && f.uv && f.uv.length === screenPts.length && screenPts.length >= 3) {
+      paintTexture(screenPts, f.uv, frame, artwork.image, opacity);
+    }
+  }
+
+  /**
+   * Fan-triangulate the facet from its own first vertex and warp the
+   * template image onto each triangle with an exact 3-point affine fit —
+   * exact along the shared diagonal between adjacent triangles, which is
+   * what keeps a curved surface's texture seamless across its tessellation
+   * instead of tearing at each quad boundary. Almost every facet here is
+   * already a small, convex, tessellated quad (two triangles, exact); the
+   * one non-convex case in the catalogue would be a whole rigid panel with
+   * a locking-tab notch cut into its own outline, where a vertex-0 fan can
+   * slightly misplace a triangle — accepted for v1, checked visually
+   * against the actual carton styles rather than solved generally here.
+   */
+  function paintTexture(screenPts: Vec2[], uvPts: Vec2[], frame: PixelFrame, image: CanvasImageSource, opacity: number): void {
+    const imgW = (image as HTMLImageElement).naturalWidth || 0;
+    const imgH = (image as HTMLImageElement).naturalHeight || 0;
+    // `mmToPx`, then a point-reflection through the image's own centre. The
+    // reflection corrects for a real (and reasoned-through, not guessed)
+    // parity difference between this module's two coordinate pipelines:
+    // `mmToPx` takes flat mm straight to pixel space with exactly one axis
+    // negation (y, to go from the model's y-up to an image's y-down). This
+    // module's own world-to-screen pipeline negates y a SECOND time —
+    // `project()`'s `-dot(p, cam.up)` and then `modelToScreen`'s own
+    // `height/2 - (...)`, which cancel — and leaves x with no negation at
+    // all. So relative to raw flat (x, y), the destination (screen) carries
+    // zero net axis flips while the source (image pixels, via `mmToPx`)
+    // carries exactly one — a parity mismatch on both axes at once, which
+    // reads as a full 180° rotation, not a plain left-right mirror. This
+    // reflects the source once more to match, confirmed against the test
+    // artwork: the base face's own big "F" and both its crimp-band labels
+    // (physically at opposite ends of the panel) all land upright, in the
+    // right place, only with this correction applied.
+    const src = (p: Vec2): Vec2 => {
+      const px = mmToPx(p, frame);
+      return { x: imgW - px.x, y: imgH - px.y };
+    };
+    for (let i = 1; i < screenPts.length - 1; i++) {
+      const s0 = src(uvPts[0]!);
+      const s1 = src(uvPts[i]!);
+      const s2 = src(uvPts[i + 1]!);
+      const d0 = screenPts[0]!;
+      const d1 = screenPts[i]!;
+      const d2 = screenPts[i + 1]!;
+      const m = triangleAffine(s0, s1, s2, d0, d1, d2);
+      if (!m) continue;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(d0.x, d0.y);
+      ctx.lineTo(d1.x, d1.y);
+      ctx.lineTo(d2.x, d2.y);
+      ctx.closePath();
+      ctx.clip();
+      ctx.globalAlpha = opacity;
+      ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
+      ctx.drawImage(image, 0, 0);
+      ctx.restore();
+    }
+  }
+
   function render(): void {
-    const { azimuth, elevation, view } = store.getState().camera3d;
+    const state = store.getState();
+    const { azimuth, elevation, view } = state.camera3d;
     const { faces: ordered, formed } = projectFaces(azimuth, elevation);
     label.textContent = `${formed ? 'Formed pack' : 'Folded'} · orbit`;
+    bgBtn.classList.toggle('on', state.bg3d === 'white');
 
     const vp = viewport();
-    if (ordered.length === 0) {
-      svg.innerHTML = '';
-      return;
+    const dpr = window.devicePixelRatio || 1;
+    const wantW = Math.max(1, Math.round(vp.width * dpr));
+    const wantH = Math.max(1, Math.round(vp.height * dpr));
+    if (canvas.width !== wantW) canvas.width = wantW;
+    if (canvas.height !== wantH) canvas.height = wantH;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, vp.width, vp.height);
+
+    if (state.bg3d === 'white') {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, vp.width, vp.height);
     }
-    // A lofted face is now many small facets rather than one polygon —
-    // stroking every facet in the outline colour draws a visible grid across
-    // every curved panel. Each facet's seam is stroked in its own fill
-    // colour/opacity instead, present only to close antialiasing gaps
-    // between adjacent quads, so a curved surface reads as a shading
-    // gradient. The face's own outer boundary (a real edge — a different
-    // panel, a folded-on fin) is a separate outline-coloured stroke on top.
-    const seamWidth = 0.4 / view.zoom;
-    const outlineWidth = 0.7 / view.zoom;
-    svg.setAttribute('viewBox', `0 0 ${vp.width} ${vp.height}`);
-    // One interleaved paint-order pass: a boundary on the far side of the
-    // loft (the back seam, viewed from the front) must be genuinely
-    // occludable by a nearer face's fill, or it draws through regardless of
-    // camera angle. Each outline edge is its own short segment (see
-    // projectFormedFaces), sorted by its own local depth, so this is
-    // accurate along the whole boundary rather than an average that can
-    // lose locally even where a segment should clearly win.
-    svg.innerHTML = ordered
-      .map((f) => {
-        const screenPts = f.pts.map((p) => modelToScreen(p, view, vp));
-        if (f.outline) {
-          return `<path d="${d(screenPts)}" fill="none" stroke="var(--board-edge)" stroke-width="${outlineWidth.toFixed(3)}" stroke-linecap="round"/>`;
-        }
-        const opacity = (0.55 + 0.45 * f.shade).toFixed(3);
-        return (
-          `<path d="${d(screenPts)} Z" fill="var(--board)" fill-opacity="${opacity}" ` +
-          `stroke="var(--board)" stroke-opacity="${opacity}" stroke-width="${seamWidth.toFixed(3)}" stroke-linejoin="round"/>`
-        );
-      })
-      .join('');
+
+    if (ordered.length === 0) return;
+
+    const boardColor = themeColor('--board', '#d8c9ae');
+    const edgeColor = themeColor('--board-edge', '#b39b76');
+    const seamWidth = Math.max(0.4, 0.4 / view.zoom);
+    const outlineWidth = Math.max(0.5, 0.7 / view.zoom);
+
+    const artwork = state.artwork;
+    const bounds = store.getDerived().resolved.blankBounds;
+    const frame = artwork && bounds ? pixelFrame(bounds, artwork.image.naturalWidth || 1, artwork.image.naturalHeight || 1) : null;
+
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+
+    // Interleaved paint order, same as the SVG version this replaced: a
+    // boundary on the far side of the loft must be genuinely occludable by
+    // a nearer facet's fill, which is only true if fills and outline
+    // strokes are drawn in one pass through the SAME depth-sorted array
+    // rather than all fills, then all outlines.
+    for (const f of ordered) {
+      const screenPts = f.pts.map((p) => modelToScreen(p, view, vp));
+      if (f.outline) {
+        ctx.strokeStyle = edgeColor;
+        ctx.lineWidth = outlineWidth;
+        ctx.beginPath();
+        ctx.moveTo(screenPts[0]!.x, screenPts[0]!.y);
+        ctx.lineTo(screenPts[1]!.x, screenPts[1]!.y);
+        ctx.stroke();
+        continue;
+      }
+      const opacity = 0.55 + 0.45 * f.shade;
+      paintFacet(f, screenPts, opacity, boardColor, artwork, frame);
+      // The same seam stroke the SVG version drew around each fill facet —
+      // present only to close antialiasing gaps between adjacent
+      // tessellated quads, in the facet's own colour, not a visible edge.
+      ctx.beginPath();
+      ctx.moveTo(screenPts[0]!.x, screenPts[0]!.y);
+      for (let i = 1; i < screenPts.length; i++) ctx.lineTo(screenPts[i]!.x, screenPts[i]!.y);
+      ctx.closePath();
+      ctx.globalAlpha = opacity;
+      ctx.strokeStyle = boardColor;
+      ctx.lineWidth = seamWidth;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
   }
 
   // -- interaction: left-drag orbits, shift+left-drag or middle-drag pans, wheel zooms --
@@ -126,18 +244,18 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
   type Drag = { kind: 'orbit'; last: Vec2 } | { kind: 'pan'; last: Vec2 };
   let drag: Drag | null = null;
 
-  svg.addEventListener('pointerdown', (ev) => {
+  canvas.addEventListener('pointerdown', (ev) => {
     if (ev.button !== 0 && ev.button !== 1) return;
-    const r = svg.getBoundingClientRect();
+    const r = canvas.getBoundingClientRect();
     const last = { x: ev.clientX - r.left, y: ev.clientY - r.top };
     drag = ev.button === 1 || ev.shiftKey ? { kind: 'pan', last } : { kind: 'orbit', last };
-    svg.setPointerCapture(ev.pointerId);
-    svg.classList.add(drag.kind === 'pan' ? 'panning' : 'orbiting');
+    canvas.setPointerCapture(ev.pointerId);
+    canvas.classList.add(drag.kind === 'pan' ? 'panning' : 'orbiting');
   });
 
-  svg.addEventListener('pointermove', (ev) => {
+  canvas.addEventListener('pointermove', (ev) => {
     if (!drag) return;
-    const r = svg.getBoundingClientRect();
+    const r = canvas.getBoundingClientRect();
     const now = { x: ev.clientX - r.left, y: ev.clientY - r.top };
     const dx = now.x - drag.last.x;
     const dy = now.y - drag.last.y;
@@ -157,18 +275,18 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
 
   function endDrag(ev: PointerEvent): void {
     if (!drag) return;
-    svg.releasePointerCapture(ev.pointerId);
-    svg.classList.remove('panning', 'orbiting');
+    canvas.releasePointerCapture(ev.pointerId);
+    canvas.classList.remove('panning', 'orbiting');
     drag = null;
   }
-  svg.addEventListener('pointerup', endDrag);
-  svg.addEventListener('pointerleave', endDrag);
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointerleave', endDrag);
 
-  svg.addEventListener(
+  canvas.addEventListener(
     'wheel',
     (ev) => {
       ev.preventDefault();
-      const r = svg.getBoundingClientRect();
+      const r = canvas.getBoundingClientRect();
       const screenPoint = { x: ev.clientX - r.left, y: ev.clientY - r.top };
       const factor = Math.exp(-ev.deltaY * 0.0015);
       const cam3 = store.getState().camera3d;
@@ -177,8 +295,9 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
     { passive: false },
   );
 
-  svg.addEventListener('contextmenu', (ev) => ev.preventDefault());
+  canvas.addEventListener('contextmenu', (ev) => ev.preventDefault());
   resetBtn.addEventListener('click', () => resetToIso());
+  bgBtn.addEventListener('click', () => store.setBg3D(store.getState().bg3d === 'white' ? 'theme' : 'white'));
 
   // A style switch (or the very first mount) can put the content anywhere in
   // projected space — the pan/zoom from whatever was framed before has no
@@ -187,6 +306,7 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
   // update instead of snapping back on every hinge-angle or dimension edit.
   let lastStyleId: string | null = null;
   function renderOrRefit(): void {
+    container.classList.toggle('bg-white', store.getState().bg3d === 'white');
     const styleId = store.getState().styleId;
     if (styleId !== lastStyleId) {
       lastStyleId = styleId;
@@ -199,9 +319,13 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
   const unsubscribe = store.subscribe(renderOrRefit);
   renderOrRefit(); // first mount: always a "style change" from null, so this fits
 
+  const resizeObserver = new ResizeObserver(() => render());
+  resizeObserver.observe(canvas);
+
   return {
     destroy() {
       unsubscribe();
+      resizeObserver.disconnect();
     },
   };
 }

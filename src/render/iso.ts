@@ -136,9 +136,19 @@ export interface ProjectedFacet {
    * mesh.
    */
   outline?: boolean;
+  /**
+   * Flat (x, y) per point in `pts`, carried through unchanged from
+   * `FormedFacet.uv` — absent for outline segments, which are never
+   * textured. This is what lets a consumer (the 3D pane, when artwork is
+   * applied) sample the SAME template image this facet's own flat pattern
+   * region would print from, via a per-triangle affine fit between `uv`
+   * (source, in the template's mm/pixel space) and `pts` (destination, in
+   * screen space).
+   */
+  uv?: Vec2[];
 }
 
-function projectRing(points: Vec3[], cam: CameraBasis): { pts: Vec2[]; depth: number; shade: number } | null {
+function projectRing(points: Vec3[], uv: Vec2[], cam: CameraBasis): { pts: Vec2[]; depth: number; shade: number; uv: Vec2[] } | null {
   if (points.length < 3) return null;
   const proj = points.map((p) => project(p, cam));
   const depth = proj.reduce((s, q) => s + q.depth, 0) / proj.length;
@@ -154,7 +164,7 @@ function projectRing(points: Vec3[], cam: CameraBasis): { pts: Vec2[]; depth: nu
   }
   const len = Math.hypot(nx, ny, nz) || 1;
   const dot3 = (nx / len) * cam.forward.x + (ny / len) * cam.forward.y + (nz / len) * cam.forward.z;
-  return { pts: proj.map((q) => ({ x: q.x, y: q.y })), depth, shade: Math.abs(dot3) };
+  return { pts: proj.map((q) => ({ x: q.x, y: q.y })), depth, shade: Math.abs(dot3), uv };
 }
 
 /**
@@ -181,8 +191,8 @@ function projectRing(points: Vec3[], cam: CameraBasis): { pts: Vec2[]; depth: nu
 export function projectFormedFaces(formed: Map<string, FormedFace>, cam: CameraBasis): ProjectedFacet[] {
   const out: ProjectedFacet[] = [];
   for (const { face, facets, outline } of formed.values()) {
-    for (const { points } of facets) {
-      const r = projectRing(points, cam);
+    for (const { points, uv } of facets) {
+      const r = projectRing(points, uv, cam);
       if (r) out.push({ ...r, ply: face.ply });
     }
     for (const loop of outline) {

@@ -95,6 +95,16 @@ export function computeFormedShape(
   fillOverride?: number,
 ): Map<string, FormedFace> {
   const spec = graph.formedShape as FormedShapeSpec | undefined;
+  const out = computeFormedShapeUnflipped(graph, resolved, spec, fillOverride);
+  return graph.faceUVFlip ? applyUVFlip(out, graph.faceUVFlip) : out;
+}
+
+function computeFormedShapeUnflipped(
+  graph: GeometryGraph,
+  resolved: ResolvedGeometry,
+  spec: FormedShapeSpec | undefined,
+  fillOverride?: number,
+): Map<string, FormedFace> {
   if (!spec || spec.kind === 'none') {
     return rigidFallback(resolved);
   }
@@ -103,6 +113,41 @@ export function computeFormedShape(
   if (spec.kind === 'gusseted_pouch') return gussetedPouch(resolved, spec, fill, params);
   if (spec.kind === 'lofted_profile') return loftedProfile(resolved, graph, spec, fill);
   return rigidFallback(resolved);
+}
+
+/**
+ * Mirrors a face's own UV within its own flat bounding box — the artwork
+ * that would have sampled from this panel's region of the template still
+ * does, just reflected, rather than sliding to sample some other panel's
+ * region. `'both'` is a 180° in-plane spin (mirror both axes), for a panel
+ * that reads upside-down as well as backward.
+ */
+function applyUVFlip(out: Map<string, FormedFace>, flips: Record<string, 'u' | 'v' | 'both'>): Map<string, FormedFace> {
+  const flipped = new Map<string, FormedFace>();
+  for (const [id, entry] of out) {
+    const mode = flips[entry.face.role];
+    if (!mode) {
+      flipped.set(id, entry);
+      continue;
+    }
+    const allUv = entry.facets.flatMap((f) => f.uv);
+    const bnd = boundsOf(allUv);
+    if (!bnd) {
+      flipped.set(id, entry);
+      continue;
+    }
+    const mirrorX = mode === 'u' || mode === 'both';
+    const mirrorY = mode === 'v' || mode === 'both';
+    const mirror = (p: Vec2): Vec2 => ({
+      x: mirrorX ? bnd.min.x + bnd.max.x - p.x : p.x,
+      y: mirrorY ? bnd.min.y + bnd.max.y - p.y : p.y,
+    });
+    flipped.set(id, {
+      ...entry,
+      facets: entry.facets.map((f) => ({ points: f.points, uv: f.uv.map(mirror) })),
+    });
+  }
+  return flipped;
 }
 
 function rigidFallback(resolved: ResolvedGeometry): Map<string, FormedFace> {

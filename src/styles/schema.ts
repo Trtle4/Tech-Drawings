@@ -499,6 +499,28 @@ export interface StyleDefinition {
    * or another base-and-walls style wants 'z'.
    */
   upAxis?: 'x' | 'y' | 'z';
+  /**
+   * Per-role artwork orientation correction for the 3D/formed view, keyed by
+   * face role. A flat pattern prints on one side of the material; folding is
+   * a sequence of rotations, and for MOST panels that keeps the same printed
+   * side facing outward all the way through the fold tree. But a panel
+   * reached by an odd number of "flip" hinges along its path from the base
+   * face — most often a flap that laps UNDER its neighbour rather than
+   * simply swinging out from it — ends up with its printed side facing
+   * inward, so texturing it with the flat (x, y) UV unmodified reads
+   * backward from the panel's own visible (outward) face, the same way
+   * text on tracing paper reads backward from the far side of the sheet.
+   * `'u'` mirrors the sampled x within that face's own flat bounding box,
+   * `'v'` mirrors y, `'both'` mirrors both (a 180° in-plane spin) — chosen
+   * per role by looking at the rendered test artwork (see
+   * `renderTestArtwork`), never guessed from the fold tree, since getting
+   * it wrong here silently prints backward art rather than erroring.
+   * Applies uniformly to every `computeFormedShape` path (`lofted_profile`,
+   * the rigid fallback cartons use, everything), because the mirroring
+   * this corrects for is a property of the FOLD, not of any one formed-
+   * shape engine.
+   */
+  faceUVFlip?: Record<string, 'u' | 'v' | 'both'>;
 }
 
 // ---------------------------------------------------------------------------

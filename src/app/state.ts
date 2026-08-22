@@ -22,6 +22,19 @@ import { DEFAULT_SNAP, fitToBounds, type Camera2D, type SnapSettings, type Viewp
 
 export type Selection = { kind: 'line'; lineId: string } | { kind: 'face'; faceId: string } | null;
 
+/**
+ * The currently-applied artwork. Purely a rendering overlay — see
+ * `Store.setArtwork`. `image` is pre-loaded (decoded) so the 2D and 3D
+ * panes can read `naturalWidth`/`naturalHeight` and draw synchronously on
+ * every render, rather than every consumer separately awaiting a decode.
+ */
+export interface ArtworkState {
+  kind: 'png' | 'jpg' | 'svg' | 'test';
+  name: string;
+  dataUrl: string;
+  image: HTMLImageElement;
+}
+
 /** Orbit angles plus a pan/zoom of the resulting projected plane — see camera2d.ts's Camera2D, reused as-is for the 2D plane a 3D projection lands on. */
 export interface Camera3DState {
   azimuth: number;
@@ -44,6 +57,19 @@ export interface AppState {
   camera3d: Camera3DState;
   snap: SnapSettings;
   primaryView: '2d' | '3d';
+  /**
+   * View state, not content — like `camera`, not tracked by undo/redo.
+   * `null` means no artwork applied; both panes fall back to their plain
+   * shaded rendering. Updating it never touches `styleId`/`params`/`ops`,
+   * so applying, replacing or removing artwork never re-derives geometry —
+   * "artwork updates the texture only, never rebuilds the mesh," literally:
+   * `getDerived()`'s cache key is `state`, but `derive()` itself never reads
+   * `state.artwork`, so a `derive()` call that DOES re-run because some
+   * unrelated field changed still reuses the same mesh either way.
+   */
+  artwork: ArtworkState | null;
+  /** 3D pane background — 'white' for a clean screenshot/handoff backdrop. */
+  bg3d: 'theme' | 'white';
 }
 
 export interface StaleOverride {
@@ -106,6 +132,8 @@ export function createInitialState(styleId?: string): AppState {
     camera3d: { ...DEFAULT_ORBIT, view: { cx: 0, cy: 0, zoom: 1 } },
     snap: DEFAULT_SNAP,
     primaryView: '2d',
+    artwork: null,
+    bg3d: 'theme',
   };
 }
 
@@ -180,13 +208,18 @@ export class Store {
     this.set({ ...next, selection: null });
   }
 
-  /** Switching style starts clean: a different style's dimensions and a stranger's hand edits do not mix. */
+  /**
+   * Switching style starts clean: a different style's dimensions and a
+   * stranger's hand edits do not mix. Artwork goes too, for the same
+   * reason — it's registered to the OLD style's own blank bounds, and would
+   * render stretched and meaningless across a completely different shape.
+   */
   setStyle(styleId: string): void {
     const def = STYLE_BY_ID.get(styleId);
     if (!def) return;
     this.pushHistory();
     const compiled = compileStyle(def);
-    this.set({ styleId, params: compiled.params, ops: [], selection: null });
+    this.set({ styleId, params: compiled.params, ops: [], selection: null, artwork: null });
   }
 
   setParam(id: string, value: number): void {
@@ -213,6 +246,19 @@ export class Store {
 
   setPrimaryView(view: '2d' | '3d'): void {
     this.set({ primaryView: view });
+  }
+
+  /** Apply (or replace) artwork. A pure rendering-layer overlay — see `AppState.artwork`. */
+  setArtwork(artwork: ArtworkState): void {
+    this.set({ artwork });
+  }
+
+  clearArtwork(): void {
+    this.set({ artwork: null });
+  }
+
+  setBg3D(mode: 'theme' | 'white'): void {
+    this.set({ bg3d: mode });
   }
 
   pushOp(op: OverrideOp): void {

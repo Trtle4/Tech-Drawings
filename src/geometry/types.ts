@@ -200,6 +200,14 @@ export interface GeometryGraph {
    * one left standing up). Defaults to 'y'.
    */
   upAxis?: 'x' | 'y' | 'z';
+  /**
+   * Per-role artwork orientation correction for the formed 3D view — see
+   * `StyleDefinition.faceUVFlip` for why some faces need it. Copied
+   * straight through from the style; `computeFormedShape` applies it as a
+   * post-process over every face's own UV, uniformly across every formed-
+   * shape engine.
+   */
+  faceUVFlip?: Record<string, 'u' | 'v' | 'both'>;
   meta?: Record<string, unknown>;
 }
 
