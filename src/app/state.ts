@@ -70,6 +70,9 @@ export interface AppState {
   artwork: ArtworkState | null;
   /** 3D pane background — 'white' for a clean screenshot/handoff backdrop. */
   bg3d: 'theme' | 'white';
+  /** Overall-size dimension lines (witnesses, arrowheads, a labelled span) on the flat blank / the formed pack. View state, not content. */
+  dims2d: boolean;
+  dims3d: boolean;
 }
 
 export interface StaleOverride {
@@ -134,6 +137,8 @@ export function createInitialState(styleId?: string): AppState {
     primaryView: '2d',
     artwork: null,
     bg3d: 'theme',
+    dims2d: true,
+    dims3d: true,
   };
 }
 
@@ -259,6 +264,14 @@ export class Store {
 
   setBg3D(mode: 'theme' | 'white'): void {
     this.set({ bg3d: mode });
+  }
+
+  setDims2D(on: boolean): void {
+    this.set({ dims2d: on });
+  }
+
+  setDims3D(on: boolean): void {
+    this.set({ dims3d: on });
   }
 
   pushOp(op: OverrideOp): void {

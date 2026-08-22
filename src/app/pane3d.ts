@@ -17,11 +17,12 @@
  * dimension edit, a hinge-angle edit or applied/removed artwork all show up
  * here without any extra wiring at the call site.
  */
-import type { Vec2 } from '../geometry/types.js';
-import { computeFormedShape, hasFormedShape } from '../geometry/formedShape.js';
-import { cameraBasis, projectFormedFaces, type ProjectedFacet } from '../render/iso.js';
+import type { Vec2, Vec3 } from '../geometry/types.js';
+import { computeFormedShape, hasFormedShape, type FormedFace } from '../geometry/formedShape.js';
+import { cameraBasis, project, projectFormedFaces, type CameraBasis, type ProjectedFacet } from '../render/iso.js';
 import { mmToPx, pixelFrame, triangleAffine, type PixelFrame } from '../render/texture.js';
-import { fitToBounds, modelToScreen, pan as panView, zoomAt, type Viewport } from './camera2d.js';
+import { assembleDimension, formatLengthMm, type DimensionGeometry } from '../render/dimension.js';
+import { fitToBounds, modelToScreen, pan as panView, zoomAt, type Camera2D, type Viewport } from './camera2d.js';
 import { DEFAULT_ORBIT, type ArtworkState, type Store } from './state.js';
 
 const ELEVATION_LIMIT = (89 * Math.PI) / 180;
@@ -38,6 +39,7 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
     <span class="pane-label" id="pane3d-label">Folded · iso</span>
     <canvas class="pane-canvas" id="pane3d-canvas"></canvas>
     <div class="viewport-toolbar">
+      <button class="tbtn" id="pane3d-dims" title="Overall width/height/depth dimension lines">Dims</button>
       <button class="tbtn icon" id="pane3d-bg" title="Toggle white background">⬜</button>
       <button class="tbtn icon" id="pane3d-reset" title="Reset to iso view">⤢</button>
     </div>`;
@@ -46,14 +48,41 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
   const label = container.querySelector<HTMLSpanElement>('#pane3d-label')!;
   const resetBtn = container.querySelector<HTMLButtonElement>('#pane3d-reset')!;
   const bgBtn = container.querySelector<HTMLButtonElement>('#pane3d-bg')!;
+  const dimsBtn = container.querySelector<HTMLButtonElement>('#pane3d-dims')!;
 
   function viewport(): Viewport {
     const r = canvas.getBoundingClientRect();
     return { width: r.width || 1, height: r.height || 1 };
   }
 
+  /** The world-space (mm) axis-aligned bounding box of every point in the formed/folded shape — the "outside dimensions" this pane's own dimension lines measure. */
+  function worldBoundsOf(formed: Map<string, FormedFace>): { min: Vec3; max: Vec3 } | null {
+    let minX = Infinity;
+    let minY = Infinity;
+    let minZ = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let maxZ = -Infinity;
+    for (const { facets } of formed.values()) {
+      for (const facet of facets) {
+        for (const p of facet.points) {
+          if (p.x < minX) minX = p.x;
+          if (p.x > maxX) maxX = p.x;
+          if (p.y < minY) minY = p.y;
+          if (p.y > maxY) maxY = p.y;
+          if (p.z < minZ) minZ = p.z;
+          if (p.z > maxZ) maxZ = p.z;
+        }
+      }
+    }
+    return Number.isFinite(minX) ? { min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ } } : null;
+  }
+
   /** Project the current derived geometry at a given orbit orientation — pure, no DOM writes. */
-  function projectFaces(azimuth: number, elevation: number): { faces: ProjectedFacet[]; upAxis: 'x' | 'y' | 'z' | undefined; formed: boolean } {
+  function projectFaces(
+    azimuth: number,
+    elevation: number,
+  ): { faces: ProjectedFacet[]; upAxis: 'x' | 'y' | 'z' | undefined; formed: boolean; cam: CameraBasis; worldBounds: { min: Vec3; max: Vec3 } | null } {
     const derived = store.getDerived();
     const graph = derived.graph;
     const resolved = derived.resolved;
@@ -62,7 +91,7 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
     // computeFormedShape falls back to the rigid fold itself when the style
     // has no formedShape, so this is the one path for both cases.
     const folded = computeFormedShape(graph, resolved);
-    return { faces: projectFormedFaces(folded, cam), upAxis: graph.upAxis, formed };
+    return { faces: projectFormedFaces(folded, cam), upAxis: graph.upAxis, formed, cam, worldBounds: worldBoundsOf(folded) };
   }
 
   function projectedBounds(faces: ProjectedFacet[]): { min: Vec2; max: Vec2 } | null {
@@ -171,12 +200,89 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
     }
   }
 
+  const DIM_MARGIN_FRACTION = 0.15;
+  const DIM_ARROW_PX = 6;
+
+  /** Draws one already-assembled dimension (witnesses, line, arrowheads, label) with Canvas2D calls. */
+  function drawDimension(g: DimensionGeometry, text: string, color: string): void {
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 1;
+    for (const [a, b] of g.witnesses) {
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.moveTo(g.line[0].x, g.line[0].y);
+    ctx.lineTo(g.line[1].x, g.line[1].y);
+    ctx.stroke();
+    for (const tri of g.arrowheads) {
+      ctx.beginPath();
+      ctx.moveTo(tri[0].x, tri[0].y);
+      ctx.lineTo(tri[1].x, tri[1].y);
+      ctx.lineTo(tri[2].x, tri[2].y);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.save();
+    ctx.translate(g.label.pos.x, g.label.pos.y);
+    ctx.rotate(g.label.angle);
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 0, 0);
+    ctx.restore();
+  }
+
+  /**
+   * Overall width/height/depth of the formed pack's own world-space
+   * bounding box — not a per-panel breakdown, the same "outside dimensions"
+   * scope as the 2D pane's blank-bounds callout. Each axis is offset out
+   * along exactly one OTHER axis before projecting (X along -Y, Y along
+   * -Z, Z along -X, all anchored at the box's own min corner), so all three
+   * read as a single corner-anchored annotation rather than three
+   * independent floating lines — the standard shape for an overall 3D
+   * bounding-box dimension, even though no single fixed offset scheme
+   * reads perfectly from every possible orbit angle (an inherent property
+   * of dimensioning a rotatable 3D view, not something worth chasing here).
+   */
+  function paintDimensions3D(bounds: { min: Vec3; max: Vec3 }, cam: CameraBasis, view: Camera2D, vp: Viewport, color: string): void {
+    const dx = bounds.max.x - bounds.min.x;
+    const dy = bounds.max.y - bounds.min.y;
+    const dz = bounds.max.z - bounds.min.z;
+    const margin = Math.max(dx, dy, dz, 1e-6) * DIM_MARGIN_FRACTION;
+    const toScreen = (p: Vec3): Vec2 => modelToScreen(project(p, cam), view, vp);
+
+    const axis = (
+      widthOf: number,
+      p1: Vec3,
+      p2: Vec3,
+      offsetAxis: 'x' | 'y' | 'z',
+    ): void => {
+      const off = { x: 0, y: 0, z: 0 };
+      off[offsetAxis] = -margin;
+      const d1 = { x: p1.x + off.x, y: p1.y + off.y, z: p1.z + off.z };
+      const d2 = { x: p2.x + off.x, y: p2.y + off.y, z: p2.z + off.z };
+      const g = assembleDimension(toScreen(p1), toScreen(d1), toScreen(p2), toScreen(d2), DIM_ARROW_PX);
+      drawDimension(g, formatLengthMm(widthOf), color);
+    };
+
+    const min = bounds.min;
+    const max = bounds.max;
+    axis(dx, { x: min.x, y: min.y, z: min.z }, { x: max.x, y: min.y, z: min.z }, 'y');
+    axis(dy, { x: min.x, y: min.y, z: min.z }, { x: min.x, y: max.y, z: min.z }, 'z');
+    axis(dz, { x: min.x, y: min.y, z: min.z }, { x: min.x, y: min.y, z: max.z }, 'x');
+  }
+
   function render(): void {
     const state = store.getState();
     const { azimuth, elevation, view } = state.camera3d;
-    const { faces: ordered, formed } = projectFaces(azimuth, elevation);
+    const { faces: ordered, formed, cam, worldBounds } = projectFaces(azimuth, elevation);
     label.textContent = `${formed ? 'Formed pack' : 'Folded'} · orbit`;
     bgBtn.classList.toggle('on', state.bg3d === 'white');
+    dimsBtn.classList.toggle('on', state.dims3d);
 
     const vp = viewport();
     const dpr = window.devicePixelRatio || 1;
@@ -236,6 +342,10 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
       ctx.lineWidth = seamWidth;
       ctx.stroke();
       ctx.globalAlpha = 1;
+    }
+
+    if (state.dims3d && worldBounds) {
+      paintDimensions3D(worldBounds, cam, view, vp, themeColor('--l-dimension', '#0f6e77'));
     }
   }
 
@@ -298,6 +408,7 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
   canvas.addEventListener('contextmenu', (ev) => ev.preventDefault());
   resetBtn.addEventListener('click', () => resetToIso());
   bgBtn.addEventListener('click', () => store.setBg3D(store.getState().bg3d === 'white' ? 'theme' : 'white'));
+  dimsBtn.addEventListener('click', () => store.setDims3D(!store.getState().dims3d));
 
   // A style switch (or the very first mount) can put the content anywhere in
   // projected space — the pan/zoom from whatever was framed before has no
