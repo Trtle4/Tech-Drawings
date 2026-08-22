@@ -10,6 +10,7 @@ import { sealEndCarton } from './catalog/seal-end-carton.js';
 import { bagPillow } from './catalog/bag-pillow.js';
 import { bagGusseted } from './catalog/bag-gusseted.js';
 import { bagSup } from './catalog/bag-sup.js';
+import { bagBlockBottom } from './catalog/bag-block-bottom.js';
 import { proofTaperedTray } from './catalog/proof-tapered-tray.js';
 
 /**
@@ -29,13 +30,14 @@ export const STYLES: readonly StyleDefinition[] = [
   bagPillow,
   bagSup,
   bagGusseted,
+  bagBlockBottom,
 ];
 
 export const STYLE_BY_ID: ReadonlyMap<string, StyleDefinition> = new Map(
   STYLES.map((s) => [s.id, s]),
 );
 
-export { fefco0201, fefco0200, slitCornerTray, sealEndCarton, bagPillow, bagSup, bagGusseted };
+export { fefco0201, fefco0200, slitCornerTray, sealEndCarton, bagPillow, bagSup, bagGusseted, bagBlockBottom };
 
 /**
  * Not part of the catalogue. A throwaway style defined without the grid, kept

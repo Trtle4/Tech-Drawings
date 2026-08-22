@@ -194,12 +194,92 @@ export const bagSup: StyleDefinition = {
 
   // Declared, not consumed by the rigid fold. The formed standing pouch is a
   // separate parametric mesh entirely — see formedShape.ts.
+  //
+  // A stand-up pouch is NOT a wrap-formed tube: front and back are two
+  // panels pinched at two FIXED side seals, not a continuous web wrapped
+  // around a girth. The lofted engine's default x -> girth-fraction t
+  // mapping assumes the latter (one continuous slice of x per round face);
+  // front_panel and back_panel instead sit at the SAME flat x range,
+  // stacked in y, so `faceAngularSpan` gives each its own half of the loop
+  // explicitly: front traces t = 0 -> 0.5 through the front pole, back
+  // traces t = 1 -> 0.5 (the reversed order walks the loop's OTHER half)
+  // through the back pole — both ends land on the SAME two physical pinch
+  // points, +/-W/2, by construction of the `lens` family itself.
+  //
+  // `halfWidth` is explicit ('W/2') at every station, never derived — the
+  // pinch points are a FIXED physical width, not girth-constrained the way
+  // a crimp band is. Depth is greatest near the base (where the gusset
+  // welds on) and tapers to near zero at the top seal, with a shoulder
+  // station holding it near-full for most of each panel's own height and
+  // only cinching in over the last 15%, the same reasoning as the pillow's
+  // own shoulder stations — a smooth two-station taper reads as a wedge,
+  // not a bag that stands mostly full and only narrows at the seal.
+  //
+  // gusset_front/gusset_back are not swept along the loft at all — each
+  // opens into a flat oval welded to the wall's own rim at the base
+  // (baseFaceRoles), sharing that wall's own faceAngularSpan so the base's
+  // opened edge is read directly off the SAME surfaceAt formula the wall
+  // uses, guaranteeing an exact weld rather than a re-derived approximation.
   formedShape: {
-    kind: 'gusseted_pouch',
-    faceRoles: ['front_panel', 'back_panel', 'gusset_front', 'gusset_back'],
-    flatFaceRoles: ['front_seal_left', 'front_seal_right', 'back_seal_left', 'back_seal_right'],
+    kind: 'lofted_profile',
+    faceRoles: ['front_panel', 'back_panel'],
+    flapFaceRoles: ['front_seal_left', 'front_seal_right', 'back_seal_left', 'back_seal_right'],
+    baseFaceRoles: ['gusset_front', 'gusset_back'],
+    sealStyle: 'fin',
+    faceAngularSpan: {
+      front_panel: [0, 0.5],
+      back_panel: [1, 0.5],
+      gusset_front: [0, 0.5],
+      gusset_back: [1, 0.5],
+    },
+    // Both side seals sit at the SAME two physical pinch points regardless
+    // of which panel's own flat x-range they're read from.
+    flapAttachT: {
+      front_seal_left: 0,
+      back_seal_left: 1,
+      front_seal_right: 0.5,
+      back_seal_right: 0.5,
+    },
+    // The assembled pouch's own length axis: world y = 0 at the base
+    // (matching a standing pouch — base on the table, seal on top), world
+    // y = L at the top seal. Neither panel's own flat y already reads that
+    // way, so both need a remap ([world y at the face's own min flat-y,
+    // world y at its own max flat-y]):
+    // back_panel is flat y 0..L, with 0 its own top-seal edge and L its own
+    // base-adjacent edge — the reverse of the assembled axis, so reflected.
+    // front_panel is flat y GUSSET_HI..TOP, with GUSSET_HI its own
+    // base-adjacent edge and TOP its own top-seal edge — already increasing
+    // in the assembled direction, so a plain shift (GUSSET_HI -> 0).
+    // The two side-seal pairs ride along with whichever panel they're
+    // flat-pattern-adjacent to.
+    faceWorldY: {
+      back_panel: ['L', '0'],
+      back_seal_left: ['L', '0'],
+      back_seal_right: ['L', '0'],
+      front_panel: ['0', 'L'],
+      front_seal_left: ['0', 'L'],
+      front_seal_right: ['0', 'L'],
+    },
+    baseWeldY: {
+      // Each panel's own edge nearest the gusset in the FLAT pattern (see
+      // the file header: back_panel is y 0..L, front_panel is y L+2G..2L+2G)
+      // — back's is its max, front's is its min. Loft-space (flat-y domain):
+      // which station's rim shape the base reads, not where it ends up.
+      gusset_back: 'L',
+      gusset_front: GUSSET_HI,
+    },
+    // Both halves of the base collapse onto the SAME assembled y as the
+    // walls' own base-adjacent edge, 0.
+    baseWorldY: { gusset_back: '0', gusset_front: '0' },
+    stations: [
+      { y: '0', halfWidth: 'W/2', halfDepth: 'max(caliper, G*0.06)', profile: { family: 'lens' } },
+      { y: 'L*0.15', halfWidth: 'W/2', halfDepth: 'G*0.85', profile: { family: 'lens' } },
+      { y: 'L', halfWidth: 'W/2', halfDepth: 'G', profile: { family: 'lens' } },
+      { y: GUSSET_HI, halfWidth: 'W/2', halfDepth: 'G', profile: { family: 'lens' } },
+      { y: `${GUSSET_HI} + L*0.85`, halfWidth: 'W/2', halfDepth: 'G*0.85', profile: { family: 'lens' } },
+      { y: TOP, halfWidth: 'W/2', halfDepth: 'max(caliper, G*0.06)', profile: { family: 'lens' } },
+    ],
     fill: '0.75',
-    params: { baseDepth: 'G' },
   },
 
   seals: [

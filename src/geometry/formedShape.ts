@@ -19,7 +19,7 @@
  */
 
 import type { Face, GeometryGraph, ResolvedGeometry, Vec2, Vec3 } from './types.js';
-import type { FormedShapeSpec, LoftStationSpec } from '../styles/schema.js';
+import type { FormedShapeSpec, LoftStationSpec, ProfileSpec } from '../styles/schema.js';
 import { evalExpr, type Scope } from '../styles/expr.js';
 import { foldedFacePoints } from './fold.js';
 import { boundsOf } from './math.js';
@@ -206,12 +206,120 @@ interface ResolvedStation {
   y: number;
   halfWidth: number;
   halfDepth: number;
+  /** Meaning depends on the shared `family` (see `ProfileFamily`): sharpness
+   * for `superellipse`, corner radius for `rounded_rect`, unused otherwise.
+   * Interpolated between stations the same way as halfWidth/halfDepth. */
+  shapeParam: number;
 }
 
 const normalize2 = (x: number, z: number): { x: number; z: number } => {
   const l = Math.hypot(x, z);
   return l < 1e-9 ? { x: 1, z: 0 } : { x: x / l, z: z / l };
 };
+
+// ---------------------------------------------------------------------------
+// Cross-section profile families for the lofted engine. Every one of these
+// is a pure function of (halfWidth, halfDepth, angle[, shapeParam]) -> (x,
+// z) — nothing here reads a station, a face, or the flat pattern. See
+// `ProfileSpec` in schema.ts for what distinguishes each family physically.
+// ---------------------------------------------------------------------------
+
+function shapeEllipse(halfWidth: number, halfDepth: number, angle: number): { x: number; z: number } {
+  return { x: halfWidth * Math.cos(angle), z: halfDepth * Math.sin(angle) };
+}
+
+function shapeSuperellipse(halfWidth: number, halfDepth: number, angle: number, sharpness: number): { x: number; z: number } {
+  const p = 2 / (2 + sharpness);
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  return {
+    x: halfWidth * Math.sign(c) * Math.abs(c) ** p,
+    z: halfDepth * Math.sign(s) * Math.abs(s) ** p,
+  };
+}
+
+/**
+ * Two circular arcs — front (z > 0) and back (z < 0) — each through the SAME
+ * two fixed pinch points (+/-halfWidth, 0), bulging to (0, +/-halfDepth) at
+ * its own apex, via the same chord-and-sagitta construction as `arcThrough`.
+ * Unlike an ellipse's own extremum, the two arcs meet at the pinch with
+ * DIFFERENT tangent directions — a genuine corner, not a roundover — which
+ * is the whole reason this is a separate family: a lens/vesica shape's
+ * pointed ends read as a real seal crease, an ellipse's read as a roundover.
+ */
+function shapeLens(halfWidth: number, halfDepth: number, angle: number): { x: number; z: number } {
+  const hw = Math.max(1e-9, halfWidth);
+  const hd = halfDepth;
+  if (hd < 1e-6 * Math.max(1, hw)) {
+    // The sagitta solve is numerically unstable as hd -> 0 (the arc's own
+    // radius blows up); visually indistinguishable from a flat line at this
+    // scale regardless of family, so just give the degenerate flat line.
+    return { x: hw * Math.cos(angle), z: hd * Math.sin(angle) };
+  }
+  const zc = (hd * hd - hw * hw) / (2 * hd);
+  const R = hd - zc;
+  const cosBeta0 = Math.max(-1, Math.min(1, -zc / R));
+  const beta0 = Math.acos(cosBeta0);
+  let a = angle % (2 * Math.PI);
+  if (a < 0) a += 2 * Math.PI;
+  const front = a <= Math.PI;
+  const sign = front ? 1 : -1;
+  const u = front ? a / Math.PI : (a - Math.PI) / Math.PI;
+  const beta = sign * beta0 * (1 - 2 * u);
+  return { x: R * Math.sin(beta), z: sign * (zc + R * Math.cos(beta)) };
+}
+
+/**
+ * A true rounded rectangle: straight sides, a genuine constant-radius arc at
+ * each corner — walked as arc length, CCW from (halfWidth, 0), so `angle`
+ * (equivalently girth-fraction t) is an arc-length parametrization here
+ * rather than a geometric angle. `cornerRadius` 0 degenerates to a sharp
+ * rectangle, which is how a boxy body's own flat-bottomed station is
+ * expressed: same family throughout, the corner radius alone shrinks away.
+ */
+function shapeRoundedRect(halfWidth: number, halfDepth: number, angle: number, cornerRadius: number): { x: number; z: number } {
+  const hw = Math.max(1e-9, halfWidth);
+  const hd = Math.max(1e-9, halfDepth);
+  const r = Math.max(0, Math.min(cornerRadius, hw, hd));
+  const straightX = hw - r;
+  const straightZ = hd - r;
+  const quarterLen = (Math.PI / 2) * r;
+  const perimeter = 4 * straightX + 4 * straightZ + 4 * quarterLen;
+  if (perimeter < 1e-9) return { x: 0, z: 0 };
+  let a = angle % (2 * Math.PI);
+  if (a < 0) a += 2 * Math.PI;
+  let s = (a / (2 * Math.PI)) * perimeter;
+
+  if (s <= straightZ) return { x: hw, z: s }; // right edge, upper half
+  s -= straightZ;
+  if (s <= quarterLen) {
+    const ang = (s / quarterLen) * (Math.PI / 2);
+    return { x: straightX + r * Math.cos(ang), z: straightZ + r * Math.sin(ang) }; // top-right corner
+  }
+  s -= quarterLen;
+  if (s <= 2 * straightX) return { x: straightX - s, z: hd }; // top edge
+  s -= 2 * straightX;
+  if (s <= quarterLen) {
+    const ang = Math.PI / 2 + (s / quarterLen) * (Math.PI / 2);
+    return { x: -straightX + r * Math.cos(ang), z: straightZ + r * Math.sin(ang) }; // top-left corner
+  }
+  s -= quarterLen;
+  if (s <= 2 * straightZ) return { x: -hw, z: straightZ - s }; // left edge
+  s -= 2 * straightZ;
+  if (s <= quarterLen) {
+    const ang = Math.PI + (s / quarterLen) * (Math.PI / 2);
+    return { x: -straightX + r * Math.cos(ang), z: -straightZ + r * Math.sin(ang) }; // bottom-left corner
+  }
+  s -= quarterLen;
+  if (s <= 2 * straightX) return { x: -straightX + s, z: -hd }; // bottom edge
+  s -= 2 * straightX;
+  if (s <= quarterLen) {
+    const ang = (3 * Math.PI) / 2 + (s / quarterLen) * (Math.PI / 2);
+    return { x: straightX + r * Math.cos(ang), z: -straightZ + r * Math.sin(ang) }; // bottom-right corner
+  }
+  s -= quarterLen;
+  return { x: hw, z: -straightZ + s }; // right edge, lower half — closes the loop
+}
 
 /** Ramanujan's second approximation — accurate to a fraction of a percent for any aspect ratio. */
 function ellipsePerimeter(a: number, b: number): number {
@@ -353,6 +461,18 @@ function loftedProfile(
 
   const paramScope = (graph.meta?.params as Record<string, number> | undefined) ?? {};
   const scope: Scope = { ...paramScope, girth };
+  // A station's own shapeParam is the family-specific extra number
+  // (superellipse's sharpness, rounded_rect's cornerRadius) — 0 for ellipse
+  // and lens, which need none. The family itself is shared across every
+  // station in this spec (interpolating BETWEEN two different families is
+  // not defined), read once from the first station.
+  const shapeParamOf = (p: ProfileSpec | undefined): number => {
+    if (!p) return 0;
+    if (p.family === 'superellipse') return evalExpr(p.sharpness, scope);
+    if (p.family === 'rounded_rect') return evalExpr(p.cornerRadius, scope);
+    return 0;
+  };
+  const family = spec.stations![0]!.profile?.family ?? 'ellipse';
   const stations: ResolvedStation[] = spec
     .stations!.map((s: LoftStationSpec) => {
       const halfDepth = evalExpr(s.halfDepth, scope);
@@ -362,7 +482,7 @@ function loftedProfile(
       // crimp read wider than the round midpoint: the same girth wrapped
       // around less depth has to spread out further to use it all.
       const halfWidth = s.halfWidth !== undefined ? evalExpr(s.halfWidth, scope) : solveHalfWidthForPerimeter(girth, halfDepth);
-      return { y: evalExpr(s.y, scope), halfWidth, halfDepth };
+      return { y: evalExpr(s.y, scope), halfWidth, halfDepth, shapeParam: shapeParamOf(s.profile) };
     })
     .sort((a, b) => a.y - b.y);
   const flatRef = stations[0]!;
@@ -389,8 +509,9 @@ function loftedProfile(
   const ys = stations.map((s) => s.y);
   const widthTangents = pchipTangents(ys, stations.map((s) => s.halfWidth));
   const depthTangents = pchipTangents(ys, stations.map((s) => s.halfDepth));
+  const shapeParamTangents = pchipTangents(ys, stations.map((s) => s.shapeParam));
 
-  const stationAt = (y: number): { halfWidth: number; halfDepth: number } => {
+  const stationAt = (y: number): { halfWidth: number; halfDepth: number; shapeParam: number } => {
     let i = 0;
     while (i < stations.length - 2 && y > stations[i + 1]!.y) i++;
     const s0 = stations[i]!;
@@ -400,6 +521,7 @@ function loftedProfile(
     return {
       halfWidth: hermite(s0.halfWidth, s1.halfWidth, widthTangents[i]! * span, widthTangents[i + 1]! * span, t),
       halfDepth: hermite(s0.halfDepth, s1.halfDepth, depthTangents[i]! * span, depthTangents[i + 1]! * span, t),
+      shapeParam: hermite(s0.shapeParam, s1.shapeParam, shapeParamTangents[i]! * span, shapeParamTangents[i + 1]! * span, t),
     };
   };
 
@@ -424,42 +546,35 @@ function loftedProfile(
    * the body station, growing toward a crimp. */
   const excessHalfWidthAt = (y: number): number => Math.max(0, stationAt(y).halfWidth - bodyHalfWidth) * fill;
 
-  // A plain ellipse (cornerSharpness = 0, the pillow's own default) is right
-  // for a bag with no flat panel to hold — front and back are each barely
-  // wider than the fin between them, so there is no "flat middle" for a
-  // true cross-section to have. A gusseted bag does have one: front and
-  // back are wide flat panels with all the folding concentrated at the
-  // narrow gusset corners, a "rectangular tube" per its own doc comment,
-  // not a smooth oval. Raising cornerSharpness bows a superellipse toward
-  // that: x = halfWidth * sign(cos) * |cos|^p, z analogous, with
-  // p = 2 / (2 + cornerSharpness) — p = 1 (sharpness 0) is the exact
-  // ellipse; p < 1 holds each axis near its own full extent for MOST of the
-  // sweep and only turns it over sharply near the pole, i.e. a flatter
-  // panel and a tighter corner. This reshapes the SILHOUETTE only, after
-  // halfWidth/halfDepth are already solved from the true ellipse's
-  // perimeter — girth conservation stays exact at t = 0 and t = 0.5 (the
-  // axis poles, where a superellipse and its parent ellipse agree exactly)
-  // and is only approximate in between, same spirit as the crimp band's
-  // display-only depth floor.
-  const shapePow = 2 / (2 + (spec.cornerSharpness ?? 0));
-  const shapeXZ = (halfWidth: number, halfDepth: number, angle: number): { x: number; z: number } => {
-    const c = Math.cos(angle);
-    const s = Math.sin(angle);
-    return {
-      x: halfWidth * Math.sign(c) * Math.abs(c) ** shapePow,
-      z: halfDepth * Math.sign(s) * Math.abs(s) ** shapePow,
-    };
+  // Dispatches to whichever profile family this spec's stations share (see
+  // the shape* functions above and ProfileSpec in schema.ts). shapeParam is
+  // the family-specific extra number, already PCHIP-interpolated the same
+  // way as halfWidth/halfDepth by the caller.
+  const shapeXZ = (halfWidth: number, halfDepth: number, angle: number, shapeParam: number): { x: number; z: number } => {
+    switch (family) {
+      case 'superellipse':
+        return shapeSuperellipse(halfWidth, halfDepth, angle, shapeParam);
+      case 'lens':
+        return shapeLens(halfWidth, halfDepth, angle);
+      case 'rounded_rect':
+        return shapeRoundedRect(halfWidth, halfDepth, angle, shapeParam);
+      default:
+        return shapeEllipse(halfWidth, halfDepth, angle);
+    }
   };
 
   /** The lofted surface point at girth-fraction t and length y, blended by fill. */
   const surfaceAt = (y: number, t: number): { x: number; z: number } => {
+    const st = stationAt(y);
     const halfWidth = lerp(flatRef.halfWidth, bodyHalfWidth, fill);
-    const halfDepth = lerp(flatRef.halfDepth, stationAt(y).halfDepth, fill);
-    return shapeXZ(halfWidth, halfDepth, t * 2 * Math.PI + phase);
+    const halfDepth = lerp(flatRef.halfDepth, st.halfDepth, fill);
+    const shapeParam = lerp(flatRef.shapeParam, st.shapeParam, fill);
+    return shapeXZ(halfWidth, halfDepth, t * 2 * Math.PI + phase, shapeParam);
   };
 
   /** The FLAT reference cross-section alone, at girth-fraction t — fixed, no y or fill. */
-  const flatAt = (t: number): { x: number; z: number } => shapeXZ(flatRef.halfWidth, flatRef.halfDepth, t * 2 * Math.PI + phase);
+  const flatAt = (t: number): { x: number; z: number } =>
+    shapeXZ(flatRef.halfWidth, flatRef.halfDepth, t * 2 * Math.PI + phase, flatRef.shapeParam);
 
   // Tessellation is driven by curvature, not by how many panels divide the
   // girth. A pillow bag has three round panels; a gusseted bag might have
@@ -490,23 +605,53 @@ function loftedProfile(
   const sampleGrid = (
     bnd: { min: Vec2; max: Vec2 },
     pointAt: (x: number, y: number) => { x: number; z: number },
+    tSpanOverride?: number,
+    worldYOf?: (flatY: number) => number,
   ): { p: Vec3; uv: Vec2 }[][] => {
     const w = bnd.max.x - bnd.min.x;
     const h = bnd.max.y - bnd.min.y;
-    const cols = segmentsForSpan(w / girth);
+    const cols = segmentsForSpan(tSpanOverride ?? w / girth);
     const rows = rowsForHeight(h);
     const grid: { p: Vec3; uv: Vec2 }[][] = [];
     for (let j = 0; j <= rows; j++) {
       const y = bnd.min.y + (h * j) / rows;
+      const worldY = worldYOf ? worldYOf(y) : y;
       const row: { p: Vec3; uv: Vec2 }[] = [];
       for (let i = 0; i <= cols; i++) {
         const x = bnd.min.x + (w * i) / cols;
         const { x: px, z } = pointAt(x, y);
-        row.push({ p: { x: px, y, z }, uv: { x, y } });
+        row.push({ p: { x: px, y: worldY, z }, uv: { x, y } });
       }
       grid.push(row);
     }
     return grid;
+  };
+
+  // A round face's own x maps to girth-fraction t by default via the
+  // SHARED (x - girthX0) / girth — right for a wrap-formed tube, where
+  // every round face occupies a distinct slice of ONE continuously wrapped
+  // web. `faceAngularSpan` overrides that per role for a style where it
+  // isn't true (see FormedShapeSpec).
+  const angleOfFace = (role: string, bnd: { min: Vec2; max: Vec2 }, x: number): number => {
+    const span = spec.faceAngularSpan?.[role];
+    if (!span) return angleOf(x);
+    const [t0, t1] = span;
+    const w = bnd.max.x - bnd.min.x || 1;
+    return t0 + ((x - bnd.min.x) / w) * (t1 - t0);
+  };
+
+  // A round face's own OUTPUT y is its flat y by default — right for a
+  // wrap-formed tube, where every round face shares one continuous length
+  // axis. `faceWorldY` overrides that per role for a style where a face's
+  // flat y and its ASSEMBLED position are not the same axis (see
+  // FormedShapeSpec) — the station lookup itself always stays keyed on
+  // flat y, only the point's final position moves.
+  const worldYOfFace = (role: string, bnd: { min: Vec2; max: Vec2 }, flatY: number): number => {
+    const span = spec.faceWorldY?.[role];
+    if (!span) return flatY;
+    const [y0, y1] = span.map((e) => evalExpr(e, scope)) as [number, number];
+    const h = bnd.max.y - bnd.min.y || 1;
+    return y0 + ((flatY - bnd.min.y) / h) * (y1 - y0);
   };
 
   const thickness = 2 * graph.caliper;
@@ -544,18 +689,20 @@ function loftedProfile(
     bnd: { min: Vec2; max: Vec2 },
     edgeT: number,
     zSign: number,
+    worldYOf: (flatY: number) => number,
   ): { facets: FormedFacet[]; outline: Vec3[] } | null => {
     const rows = rowsForHeight(bnd.max.y - bnd.min.y);
     const grid: { p: Vec3; uv: Vec2 }[][] = [];
     let maxExcess = 0;
     for (let j = 0; j <= rows; j++) {
       const y = bnd.min.y + ((bnd.max.y - bnd.min.y) * j) / rows;
+      const worldY = worldYOf(y);
       const excess = excessHalfWidthAt(y);
       maxExcess = Math.max(maxExcess, excess);
       const base = surfaceAt(y, edgeT);
       const foldDir = base.x >= 0 ? -1 : 1; // toward x = 0, the panel's own centre
-      const outer: Vec3 = { x: base.x, y, z: base.z + zSign * thickness };
-      const inner: Vec3 = { x: base.x + foldDir * excess, y, z: outer.z };
+      const outer: Vec3 = { x: base.x, y: worldY, z: base.z + zSign * thickness };
+      const inner: Vec3 = { x: base.x + foldDir * excess, y: worldY, z: outer.z };
       grid.push([
         { p: outer, uv: { x: bnd.min.x, y } },
         { p: inner, uv: { x: bnd.min.x, y } },
@@ -567,24 +714,31 @@ function loftedProfile(
 
   for (const face of roundFaces) {
     const bnd = boundsOf(face.outer.points)!;
-    const grid = sampleGrid(bnd, (x, y) => surfaceAt(y, angleOf(x)));
+    const span = spec.faceAngularSpan?.[face.role];
+    const worldYOf = (flatY: number) => worldYOfFace(face.role, bnd, flatY);
+    const grid = sampleGrid(
+      bnd,
+      (x, y) => surfaceAt(y, angleOfFace(face.role, bnd, x)),
+      span ? Math.abs(span[1] - span[0]) : undefined,
+      worldYOf,
+    );
     const facets = gridToQuads(grid);
     const outline: Vec3[][] = [gridPerimeter(grid)];
 
-    const t0 = angleOf(bnd.min.x);
-    const t1 = angleOf(bnd.max.x);
+    const t0 = angleOfFace(face.role, bnd, bnd.min.x);
+    const t1 = angleOfFace(face.role, bnd, bnd.max.x);
     const midY = (bnd.min.y + bnd.max.y) / 2;
     const faceZ = surfaceAt(midY, (t0 + t1) / 2).z;
     const zSign = faceZ === 0 ? 1 : Math.sign(faceZ);
     if (!isSeamT(t0)) {
-      const flap = dogEarFlap(bnd, t0, zSign);
+      const flap = dogEarFlap(bnd, t0, zSign, worldYOf);
       if (flap) {
         facets.push(...flap.facets);
         outline.push(flap.outline);
       }
     }
     if (!isSeamT(t1)) {
-      const flap = dogEarFlap(bnd, t1, zSign);
+      const flap = dogEarFlap(bnd, t1, zSign, worldYOf);
       if (flap) {
         facets.push(...flap.facets);
         outline.push(flap.outline);
@@ -592,6 +746,54 @@ function loftedProfile(
     }
 
     out.set(face.id, { face, facets, outline });
+  }
+
+  // Faces that do not lie on the lofted surface at all, but open into a
+  // flat oval welded to it — a stand-up pouch's base. Each needs its own
+  // `faceAngularSpan` entry: its own flat x maps to the girth-fraction t
+  // range of the RIM it welds to, so the opened edge is read directly off
+  // the wall's own surfaceAt formula (guaranteed to match, being literally
+  // the same function) rather than re-derived independently — the bug an
+  // earlier, bespoke version of this (`gussetedPouch`) had to fix twice.
+  for (const role of spec.baseFaceRoles ?? []) {
+    const face = byRole.get(role);
+    const span = spec.faceAngularSpan?.[role];
+    const weldYExpr = spec.baseWeldY?.[role];
+    if (!face || !span || weldYExpr === undefined) continue;
+    const weldY = evalExpr(weldYExpr, scope); // flat-y domain: which station's rim
+    const worldWeldY = evalExpr(spec.baseWorldY?.[role] ?? weldYExpr, scope); // where it ends up
+    const [t0, t1] = span;
+    const bnd = boundsOf(face.outer.points)!;
+    const cx = (bnd.min.x + bnd.max.x) / 2;
+    const halfW = (bnd.max.x - bnd.min.x) / 2 || 1;
+    // Which of the face's own y edges is the hinge (shared with the wall,
+    // stays put) vs. the gusset's own centre fold (swings fully out) —
+    // whichever is nearer the weld line.
+    const hingeIsMin = Math.abs(bnd.min.y - weldY) <= Math.abs(bnd.max.y - weldY);
+    const hingeY = hingeIsMin ? bnd.min.y : bnd.max.y;
+    const armLength = bnd.max.y - bnd.min.y || 1;
+    const rows = rowsForHeight(bnd.max.y - bnd.min.y);
+    const cols = segmentsForSpan(Math.abs(t1 - t0));
+    const grid: { p: Vec3; uv: Vec2 }[][] = [];
+    for (let j = 0; j <= rows; j++) {
+      const flatY = bnd.min.y + ((bnd.max.y - bnd.min.y) * j) / rows;
+      // 0 at the hinge (matches the wall's own rim exactly), 1 at the
+      // gusset's own centre fold (the floor's own centreline, z = 0).
+      const s = Math.abs(flatY - hingeY) / armLength;
+      const row: { p: Vec3; uv: Vec2 }[] = [];
+      for (let i = 0; i <= cols; i++) {
+        const flatX = bnd.min.x + ((bnd.max.x - bnd.min.x) * i) / cols;
+        const nx = (flatX - cx) / halfW;
+        const t = t0 + ((nx + 1) / 2) * (t1 - t0);
+        const rim = surfaceAt(weldY, t);
+        const x = lerp(flatX, rim.x, fill);
+        const y = lerp(flatY, worldWeldY, fill);
+        const z = lerp(0, rim.z * (1 - s), fill);
+        row.push({ p: { x, y, z }, uv: { x: flatX, y: flatY } });
+      }
+      grid.push(row);
+    }
+    out.set(face.id, { face, facets: gridToQuads(grid), outline: [gridPerimeter(grid)] });
   }
 
   const sealStyle = spec.sealStyle ?? 'fin';
@@ -607,18 +809,28 @@ function loftedProfile(
     const distMin = Math.min(Math.abs(bnd.min.x - girthX0), Math.abs(bnd.min.x - girthX1));
     const distMax = Math.min(Math.abs(bnd.max.x - girthX0), Math.abs(bnd.max.x - girthX1));
     const attachX = distMin <= distMax ? bnd.min.x : bnd.max.x;
-    const seamT = Math.round(angleOf(attachX)); // periodic: 0 or 1, the same physical seam point
+    // Auto-detect (periodic: 0 or 1, the same physical seam point) assumes
+    // one continuously wrapped web with a single seam — wrong for a style
+    // with more than one physical seam position (e.g. two independent side
+    // seals), which gives its own attach point per role instead.
+    const seamT = spec.flapAttachT?.[face.role] ?? Math.round(angleOf(attachX));
+    const worldYOf = (flatY: number) => worldYOfFace(face.role, bnd, flatY);
 
     let grid: { p: Vec3; uv: Vec2 }[][];
     if (sealStyle === 'lap') {
       // Not a separate flap — the same lofted surface, sampled past the
       // seam, offset out by the extra ply's thickness along the local
       // radial direction.
-      grid = sampleGrid(bnd, (x, y) => {
-        const p = surfaceAt(y, angleOf(x));
-        const n = normalize2(p.x, p.z);
-        return { x: p.x + n.x * thickness, z: p.z + n.z * thickness };
-      });
+      grid = sampleGrid(
+        bnd,
+        (x, y) => {
+          const p = surfaceAt(y, angleOf(x));
+          const n = normalize2(p.x, p.z);
+          return { x: p.x + n.x * thickness, z: p.z + n.z * thickness };
+        },
+        undefined,
+        worldYOf,
+      );
     } else {
       // A straight flap, folded flat against the surface at the seam: a
       // fixed offset out from the seam point, running its own true width
@@ -632,15 +844,20 @@ function loftedProfile(
       // flap that is actually folded flat stays flat regardless of how
       // round the body is elsewhere: it runs along the flat width
       // direction, which is what the degenerate flat ellipse gives.
-      grid = sampleGrid(bnd, (x, y) => {
-        const base = surfaceAt(y, seamT);
-        const flatBase = flatAt(seamT);
-        const flatStep = flatAt(seamT + foldSign * TANGENT_STEP);
-        const tangent = normalize2(flatStep.x - flatBase.x, flatStep.z - flatBase.z);
-        const normal = normalize2(base.x, base.z);
-        const along = Math.abs(x - attachX);
-        return { x: base.x + normal.x * thickness + tangent.x * along, z: base.z + normal.z * thickness + tangent.z * along };
-      });
+      grid = sampleGrid(
+        bnd,
+        (x, y) => {
+          const base = surfaceAt(y, seamT);
+          const flatBase = flatAt(seamT);
+          const flatStep = flatAt(seamT + foldSign * TANGENT_STEP);
+          const tangent = normalize2(flatStep.x - flatBase.x, flatStep.z - flatBase.z);
+          const normal = normalize2(base.x, base.z);
+          const along = Math.abs(x - attachX);
+          return { x: base.x + normal.x * thickness + tangent.x * along, z: base.z + normal.z * thickness + tangent.z * along };
+        },
+        undefined,
+        worldYOf,
+      );
     }
     out.set(face.id, { face, facets: gridToQuads(grid), outline: [gridPerimeter(grid)] });
   }

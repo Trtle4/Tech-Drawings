@@ -171,18 +171,38 @@ export const bagGusseted: StyleDefinition = {
     // Unlike the pillow (front barely wider than the fin between the two
     // back halves), front and back here are each a full bagW-wide flat
     // panel with all the folding concentrated at the four narrow gusset
-    // corners — a rectangular tube, not a smooth oval. Bows the
-    // cross-section toward a rounded rectangle so the flat panels actually
-    // read as flat.
-    cornerSharpness: 3,
+    // corners — a rectangular tube, not a smooth oval. `superellipse` bows
+    // the cross-section toward a rounded rectangle so the flat panels
+    // actually read as flat; sharpness 10 (up from an earlier, too-soft 3,
+    // then 6) holds them flatter still and turns the gusset corners over
+    // sharply.
+    //
+    // Tried `rounded_rect` here first — it is a TRUE rounded rectangle
+    // where a superellipse only ever approaches flat sides asymptotically —
+    // but it broke the dog-ear/envelope machinery: that machinery finds a
+    // boundary's own excess by reading `surfaceAt` at that boundary's own
+    // t, which relies on t corresponding to the SAME relative position on
+    // the curve a plain ellipse would put it at (the girth math, and the
+    // flat pattern's own column proportions, were laid out assuming that).
+    // A superellipse preserves that correspondence exactly, being a
+    // continuous reshaping of the SAME angle parametrization; `rounded_rect`
+    // does not — it walks arc length, which redistributes non-uniformly
+    // relative to angle, so an internal panel boundary (a gusset-to-gusset
+    // seam, not just the seam or front-centre) lands at a different
+    // geometric position than intended and reads the wrong excess there.
+    // The measured symptom was a wasp waist again (crimp narrower than
+    // midpoint) — exactly the bug the pillow's own dog-ear work fixed —
+    // so `rounded_rect` is right for a station whose own halfWidth is
+    // explicit (the block-bottom bag's boxy body, no dog-ears in play) but
+    // wrong here, where halfWidth is girth-derived.
     stations: [
-      { y: '0', halfDepth: 'max(caliper, bagD*0.06)' },
-      { y: 'endSeal', halfDepth: 'max(caliper, bagD*0.06)' },
-      { y: 'endSeal + (bagL - 2*endSeal)*0.15', halfDepth: 'bagD/2*0.92' },
-      { y: 'bagL/2', halfDepth: 'bagD/2' },
-      { y: 'bagL - endSeal - (bagL - 2*endSeal)*0.15', halfDepth: 'bagD/2*0.92' },
-      { y: 'bagL - endSeal', halfDepth: 'max(caliper, bagD*0.06)' },
-      { y: 'bagL', halfDepth: 'max(caliper, bagD*0.06)' },
+      { y: '0', halfDepth: 'max(caliper, bagD*0.06)', profile: { family: 'superellipse', sharpness: 10 } },
+      { y: 'endSeal', halfDepth: 'max(caliper, bagD*0.06)', profile: { family: 'superellipse', sharpness: 10 } },
+      { y: 'endSeal + (bagL - 2*endSeal)*0.15', halfDepth: 'bagD/2*0.92', profile: { family: 'superellipse', sharpness: 10 } },
+      { y: 'bagL/2', halfDepth: 'bagD/2', profile: { family: 'superellipse', sharpness: 10 } },
+      { y: 'bagL - endSeal - (bagL - 2*endSeal)*0.15', halfDepth: 'bagD/2*0.92', profile: { family: 'superellipse', sharpness: 10 } },
+      { y: 'bagL - endSeal', halfDepth: 'max(caliper, bagD*0.06)', profile: { family: 'superellipse', sharpness: 10 } },
+      { y: 'bagL', halfDepth: 'max(caliper, bagD*0.06)', profile: { family: 'superellipse', sharpness: 10 } },
     ],
     fill: '0.8',
   },
