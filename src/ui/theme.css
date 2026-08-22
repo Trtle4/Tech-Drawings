@@ -681,6 +681,19 @@ main {
   transition: opacity 0.15s var(--ease), filter 0.15s var(--ease);
 }
 
+/* White-background toggle (3D pane only) — a clean backdrop for a
+   screenshot or handoff, so the grid pattern and the panel's own gradient
+   background both step aside instead of showing through around the model.
+   !important because the pane's own background is set by higher-specificity
+   primary/inset rules above (#viewport.viewport-3d-primary #pane-3d etc.)
+   that this toggle needs to win over regardless of which one is active. */
+#pane-3d.bg-white {
+  background: #ffffff !important;
+}
+#pane-3d.bg-white .pane-grid {
+  display: none;
+}
+
 /* Shown while the 3D rebuild is behind the 2D canvas mid-drag. */
 .pane-canvas.stale {
   opacity: 0.4;

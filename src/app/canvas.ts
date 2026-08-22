@@ -387,17 +387,39 @@ export function mountCanvas(container: HTMLElement, store: Store): CanvasControl
     const cam = store.getState().camera;
     const vp = viewport();
     const selection = store.getState().selection;
+    const artwork = store.getState().artwork;
 
     const toScreen = (p: Vec2) => modelToScreen(p, cam, vp);
 
     const gridLayer = renderGrid(cam, vp);
 
+    // The flat blank's own (x, y) IS the artwork's UV space — no per-face
+    // mapping needed here the way the 3D pane needs one, just place the
+    // image at the blank's screen-space rect. Still axis-aligned after
+    // `modelToScreen` (pan/zoom is uniform scale + translate, no rotation),
+    // so a plain x/y/width/height suffices.
+    const artworkLayer = (() => {
+      if (!artwork) return '';
+      const bounds = derived.resolved.blankBounds;
+      if (!bounds) return '';
+      const topLeft = toScreen({ x: bounds.min.x, y: bounds.max.y });
+      const bottomRight = toScreen({ x: bounds.max.x, y: bounds.min.y });
+      const w = bottomRight.x - topLeft.x;
+      const h = bottomRight.y - topLeft.y;
+      return `<image x="${topLeft.x.toFixed(2)}" y="${topLeft.y.toFixed(2)}" width="${w.toFixed(2)}" height="${h.toFixed(2)}" href="${artwork.dataUrl}" preserveAspectRatio="none"/>`;
+    })();
+
+    // With artwork applied, an opaque board fill would wash it out —
+    // faces go transparent except the selection highlight, which still
+    // needs to read on top of the art.
     const faceLayer = derived.resolved.faces
       .map((f) => {
         const isSel = selection?.kind === 'face' && selection.faceId === f.id;
         const outer = d(f.outer.points.map(toScreen));
         const holes = f.holes.map((h) => `${d(h.points.map(toScreen))} Z`).join(' ');
-        return `<path d="${outer} Z ${holes}" fill-rule="evenodd" fill="${isSel ? 'var(--accent-soft)' : 'var(--board-white)'}" opacity="${isSel ? '0.9' : '0.75'}" data-face-id="${f.id}"/>`;
+        const fill = isSel ? 'var(--accent-soft)' : artwork ? 'none' : 'var(--board-white)';
+        const opacity = isSel ? '0.9' : artwork ? '0' : '0.75';
+        return `<path d="${outer} Z ${holes}" fill-rule="evenodd" fill="${fill}" opacity="${opacity}" data-face-id="${f.id}"/>`;
       })
       .join('');
 
@@ -457,7 +479,7 @@ export function mountCanvas(container: HTMLElement, store: Store): CanvasControl
       }
     }
 
-    svg.innerHTML = `${gridLayer}<g>${faceLayer}</g><g>${lineLayer}</g><g>${overrideBadgeLayer}</g><g>${handleLayer}</g><g>${overlay}</g>`;
+    svg.innerHTML = `${gridLayer}<g>${artworkLayer}</g><g>${faceLayer}</g><g>${lineLayer}</g><g>${overrideBadgeLayer}</g><g>${handleLayer}</g><g>${overlay}</g>`;
   }
 
   function renderGrid(cam: Camera2D, vp: Viewport): string {

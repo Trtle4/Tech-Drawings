@@ -402,3 +402,48 @@ describe('loftedProfile() — SUP bag: two panels pinched at two fixed side seal
     expect(covered).toEqual(roles);
   });
 });
+
+describe('computeFormedShape() — graph.faceUVFlip (artwork orientation correction)', () => {
+  it('leaves points untouched and mirrors only the flagged role\'s own uv, within its own bounding box', () => {
+    const { graph, resolved } = setup(bagPillow);
+    const byRole = new Map(resolved.faces.map((f) => [f.role, f]));
+    const plain = computeFormedShape(graph, resolved, 1);
+    const flipped = computeFormedShape({ ...graph, faceUVFlip: { front_panel: 'u' } }, resolved, 1);
+
+    const frontId = byRole.get('front_panel')!.id;
+    const plainPts = allPoints(plain.get(frontId)!);
+    const flippedPts = allPoints(flipped.get(frontId)!);
+    expect(flippedPts).toEqual(plainPts); // 'both' geometry never moves
+
+    const plainUv = allUv(plain.get(frontId)!);
+    const flippedUv = allUv(flipped.get(frontId)!);
+    const bnd = { minX: Math.min(...plainUv.map((p) => p.x)), maxX: Math.max(...plainUv.map((p) => p.x)) };
+    for (let i = 0; i < plainUv.length; i++) {
+      expect(flippedUv[i]!.x).toBeCloseTo(bnd.minX + bnd.maxX - plainUv[i]!.x);
+      expect(flippedUv[i]!.y).toBeCloseTo(plainUv[i]!.y); // 'u' only touches x
+    }
+
+    // An un-flagged face is untouched entirely.
+    const backId = byRole.get('back_panel_left')!.id;
+    expect(allUv(flipped.get(backId)!)).toEqual(allUv(plain.get(backId)!));
+  });
+
+  it("'both' mirrors x and y — two 'u'-then-'v' flips compose to it", () => {
+    const { graph, resolved } = setup(bagPillow);
+    const byRole = new Map(resolved.faces.map((f) => [f.role, f]));
+    const frontId = byRole.get('front_panel')!.id;
+
+    const both = computeFormedShape({ ...graph, faceUVFlip: { front_panel: 'both' } }, resolved, 1);
+    const uOnly = computeFormedShape({ ...graph, faceUVFlip: { front_panel: 'u' } }, resolved, 1);
+    const plain = computeFormedShape(graph, resolved, 1);
+
+    const plainUv = allUv(plain.get(frontId)!);
+    const uUv = allUv(uOnly.get(frontId)!);
+    const bothUv = allUv(both.get(frontId)!);
+    const bndY = { minY: Math.min(...plainUv.map((p) => p.y)), maxY: Math.max(...plainUv.map((p) => p.y)) };
+    for (let i = 0; i < plainUv.length; i++) {
+      expect(bothUv[i]!.x).toBeCloseTo(uUv[i]!.x); // x already mirrored by 'u'
+      expect(bothUv[i]!.y).toBeCloseTo(bndY.minY + bndY.maxY - plainUv[i]!.y); // y also mirrored
+    }
+  });
+});
