@@ -8,26 +8,17 @@
  * dimension edit or a hinge-angle edit from the inspector all show up here
  * without any extra wiring at the call site.
  */
-import type { Vec2, Vec3 } from '../geometry/types.js';
-import { foldedFacePoints } from '../geometry/fold.js';
+import type { Vec2 } from '../geometry/types.js';
 import { computeFormedShape, hasFormedShape } from '../geometry/formedShape.js';
-import { cameraBasis, paintOrder, project } from '../render/iso.js';
+import { cameraBasis, projectFormedFaces, type ProjectedFacet } from '../render/iso.js';
 import { fitToBounds, modelToScreen, pan as panView, zoomAt, type Viewport } from './camera2d.js';
 import { DEFAULT_ORBIT, type Store } from './state.js';
 
 const d = (pts: Vec2[]) => `M ${pts.map((p) => `${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' L ')}`;
-const dot = (a: Vec3, b: Vec3) => a.x * b.x + a.y * b.y + a.z * b.z;
 
 const ELEVATION_LIMIT = (89 * Math.PI) / 180;
 const ORBIT_SENSITIVITY = Math.PI / 300; // radians per screen px
 const clampElevation = (e: number) => Math.max(-ELEVATION_LIMIT, Math.min(ELEVATION_LIMIT, e));
-
-interface ProjectedFace {
-  pts: Vec2[];
-  depth: number;
-  shade: number;
-  ply: number;
-}
 
 export interface Pane3DController {
   destroy(): void;
@@ -51,41 +42,19 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
   }
 
   /** Project the current derived geometry at a given orbit orientation — pure, no DOM writes. */
-  function projectFaces(azimuth: number, elevation: number): { faces: ProjectedFace[]; upAxis: 'x' | 'y' | 'z' | undefined; formed: boolean } {
+  function projectFaces(azimuth: number, elevation: number): { faces: ProjectedFacet[]; upAxis: 'x' | 'y' | 'z' | undefined; formed: boolean } {
     const derived = store.getDerived();
     const graph = derived.graph;
     const resolved = derived.resolved;
     const formed = hasFormedShape(graph);
     const cam = cameraBasis(graph.upAxis, azimuth, elevation);
-    const folded = formed ? computeFormedShape(graph, resolved) : foldedFacePoints(resolved, 1);
-
-    const faces: ProjectedFace[] = [];
-    for (const { face, points } of folded.values()) {
-      if (points.length < 3) continue;
-      const proj = points.map((p) => project(p, cam));
-      const depth = proj.reduce((s, q) => s + q.depth, 0) / proj.length;
-      let nx = 0;
-      let ny = 0;
-      let nz = 0;
-      for (let i = 0; i < points.length; i++) {
-        const a = points[i]!;
-        const b = points[(i + 1) % points.length]!;
-        nx += (a.y - b.y) * (a.z + b.z);
-        ny += (a.z - b.z) * (a.x + b.x);
-        nz += (a.x - b.x) * (a.y + b.y);
-      }
-      const len = Math.hypot(nx, ny, nz) || 1;
-      faces.push({
-        pts: proj.map((q) => ({ x: q.x, y: q.y })),
-        depth,
-        ply: face.ply,
-        shade: Math.abs(dot({ x: nx / len, y: ny / len, z: nz / len }, cam.forward)),
-      });
-    }
-    return { faces: paintOrder(faces), upAxis: graph.upAxis, formed };
+    // computeFormedShape falls back to the rigid fold itself when the style
+    // has no formedShape, so this is the one path for both cases.
+    const folded = computeFormedShape(graph, resolved);
+    return { faces: projectFormedFaces(folded, cam), upAxis: graph.upAxis, formed };
   }
 
-  function projectedBounds(faces: ProjectedFace[]): { min: Vec2; max: Vec2 } | null {
+  function projectedBounds(faces: ProjectedFacet[]): { min: Vec2; max: Vec2 } | null {
     let minX = Infinity;
     let minY = Infinity;
     let maxX = -Infinity;
@@ -120,14 +89,33 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
       svg.innerHTML = '';
       return;
     }
-    const sw = 0.6 / view.zoom;
+    // A lofted face is now many small facets rather than one polygon —
+    // stroking every facet in the outline colour draws a visible grid across
+    // every curved panel. Each facet's seam is stroked in its own fill
+    // colour/opacity instead, present only to close antialiasing gaps
+    // between adjacent quads, so a curved surface reads as a shading
+    // gradient. The face's own outer boundary (a real edge — a different
+    // panel, a folded-on fin) is a separate outline-coloured stroke on top.
+    const seamWidth = 0.4 / view.zoom;
+    const outlineWidth = 0.7 / view.zoom;
     svg.setAttribute('viewBox', `0 0 ${vp.width} ${vp.height}`);
+    // One interleaved paint-order pass: a boundary on the far side of the
+    // loft (the back seam, viewed from the front) must be genuinely
+    // occludable by a nearer face's fill, or it draws through regardless of
+    // camera angle. Each outline edge is its own short segment (see
+    // projectFormedFaces), sorted by its own local depth, so this is
+    // accurate along the whole boundary rather than an average that can
+    // lose locally even where a segment should clearly win.
     svg.innerHTML = ordered
       .map((f) => {
         const screenPts = f.pts.map((p) => modelToScreen(p, view, vp));
+        if (f.outline) {
+          return `<path d="${d(screenPts)}" fill="none" stroke="var(--board-edge)" stroke-width="${outlineWidth.toFixed(3)}" stroke-linecap="round"/>`;
+        }
+        const opacity = (0.55 + 0.45 * f.shade).toFixed(3);
         return (
-          `<path d="${d(screenPts)} Z" fill="var(--board)" fill-opacity="${(0.55 + 0.45 * f.shade).toFixed(3)}" ` +
-          `stroke="var(--board-edge)" stroke-width="${sw.toFixed(3)}" stroke-linejoin="round"/>`
+          `<path d="${d(screenPts)} Z" fill="var(--board)" fill-opacity="${opacity}" ` +
+          `stroke="var(--board)" stroke-opacity="${opacity}" stroke-width="${seamWidth.toFixed(3)}" stroke-linejoin="round"/>`
         );
       })
       .join('');

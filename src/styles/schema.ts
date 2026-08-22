@@ -221,6 +221,89 @@ export interface ExtraSeedSpec {
  * style with no `formedShape` has the folded state AS its formed state, which
  * is the right answer for every carton and case.
  */
+/**
+ * The shape family a station's cross-section is drawn from — everything
+ * else about the lofted engine (girth conservation, PCHIP interpolation
+ * between stations, `fill`, the UV parameterization) is unchanged by this;
+ * only the (halfWidth, halfDepth, angle) -> (x, z) function at a station
+ * changes.
+ *
+ *  - `ellipse`       x = halfWidth*cos, z = halfDepth*sin. The engine's
+ *                     original, only behavior — a bag with no flat panel to
+ *                     hold (front and back barely wider than the fin
+ *                     between them), like the pillow. THE DEFAULT: a station
+ *                     with no `profile` is exactly this, so an existing
+ *                     ellipse-only style needs no changes at all.
+ *  - `superellipse`   Bows the ellipse toward a rounded rectangle:
+ *                     x = halfWidth*sign(cos)*|cos|^p, z analogous, with
+ *                     p = 2/(2 + sharpness). sharpness 0 is the exact
+ *                     ellipse; higher holds each axis near its own full
+ *                     extent across most of the sweep and turns it over
+ *                     sharply only near the pole — right for a bag with
+ *                     wide flat panels and the folding concentrated at
+ *                     narrow corners, like a side-gusseted bag.
+ *  - `lens`           Two circular arcs (via the same chord+sagitta
+ *                     construction as `arcThrough`), meeting at FIXED
+ *                     pinch points (+/-halfWidth, 0) with a genuine corner
+ *                     there — not the ellipse's own smooth (but still
+ *                     rounded) extremum. Right for two panels pinched at
+ *                     two side seals, like a stand-up pouch: the seal is a
+ *                     real crease, not a roundover, so the footprint comes
+ *                     to a point at each side.
+ *  - `rounded_rect`   A true rounded rectangle: straight sides and a
+ *                     genuine constant-radius arc at each corner (not a
+ *                     superellipse's continuously-curving approximation).
+ *                     `cornerRadius` 0 degenerates to a sharp rectangle —
+ *                     which is how a "flat base" station is expressed: the
+ *                     SAME family throughout a boxy body, just with
+ *                     `cornerRadius` shrinking to 0 at the one station that
+ *                     is the box's own flat floor.
+ *
+ * A single lofted surface must use ONE family throughout its stations —
+ * interpolating between two different families is not defined. The
+ * family-specific parameter (`sharpness`, `cornerRadius`) DOES interpolate
+ * per-station via the same PCHIP machinery as halfWidth/halfDepth.
+ */
+export type ProfileSpec =
+  | { family: 'ellipse' }
+  | { family: 'superellipse'; sharpness: Expr }
+  | { family: 'lens' }
+  | { family: 'rounded_rect'; cornerRadius: Expr };
+
+/**
+ * One cross-section of a `lofted_profile` shape, at a given position along the
+ * blank's up-axis. `halfWidth`/`halfDepth` are the section's own two radii,
+ * sampled the same way at every station via its `profile` family, so two
+ * adjacent stations can be interpolated point-for-point regardless of whether
+ * either one is round, flat, or something between. A flat crimp is simply a
+ * station whose `halfDepth` is small (the film's own half-thickness) rather
+ * than a different code path — same shape function, different numbers.
+ * `girth` (the round faces' combined flat-x extent) is available in these
+ * expressions alongside the style's own params.
+ *
+ * `halfWidth` is optional. Omit it and the engine DERIVES it from `halfDepth`
+ * so the cross-section's own perimeter matches `girth` — the material
+ * actually available at that point, same as the flat pattern promises for
+ * every station, not just the flat one (against the true ELLIPSE perimeter
+ * regardless of `profile`, since a closed-form perimeter for the other
+ * families does not exist; girth conservation is exact at the axis poles and
+ * approximate between them for anything but a plain ellipse). This is what
+ * makes the bag flare WIDER approaching a flat crimp than it is at a round
+ * midpoint: a fixed girth wrapped around a shallow section only reaches its
+ * full width by spreading out, the way real film does. Give an explicit
+ * `halfWidth` only to override that derivation for a station that is not
+ * girth-constrained — e.g. a pinch that stays at a fixed physical width
+ * regardless of depth.
+ *
+ * `profile` defaults to `{ family: 'ellipse' }` when omitted.
+ */
+export interface LoftStationSpec {
+  y: Expr;
+  halfWidth?: Expr;
+  halfDepth: Expr;
+  profile?: ProfileSpec;
+}
+
 export interface FormedShapeSpec {
   /**
    * Which approximation to apply, and — this is the part that matters —
@@ -229,17 +312,22 @@ export interface FormedShapeSpec {
    * film, not board: its 3D shape comes from its own seals and how full it
    * is, not from a rigid hinge-chain traversal.
    *
-   * `crimped_tube` suits a pillow bag: a girth-preserving round section down
-   * the body, tapering to a flat crimped line at the true top/bottom seals —
-   * `faceRoles` wrap the circumference (including any fin), `flatFaceRoles`
-   * are the crimp bands, always flat regardless of fill.
-   * `tube` is the older, coarser version still used by the gusseted bag.
-   * `gusseted_pouch` suits a SUP: an opened base swept from the gusset fold
-   * with the walls bowed out.
+   * `lofted_profile` is the general case: a list of `stations` along the
+   * up-axis, each with its own cross-section, linearly interpolated between
+   * neighbours — a flat end crimp lofting out to a round midpoint and back is
+   * one station list; an oval base lofting up to a flat top is another. One
+   * engine, no per-bag geometry code. `faceRoles` are the panels that lie on
+   * that lofted surface; `flapFaceRoles` are seals (a fin, a side seal) that
+   * do not lie on it — they are placed folded flat against the surface at
+   * the seam, per `flapFold`/`sealStyle`.
+   * `tube` and `gusseted_pouch` are the original, bespoke approximations;
+   * every bag in the catalogue has since migrated to `lofted_profile`, and
+   * they are kept only as a documented fallback for a future style whose
+   * shape genuinely does not fit the lofted model.
    * `none` keeps the rigid fold — correct for every carton and case, wrong
    * for anything without a rigid folded state.
    */
-  kind: 'none' | 'tube' | 'crimped_tube' | 'gusseted_pouch';
+  kind: 'none' | 'tube' | 'gusseted_pouch' | 'lofted_profile';
   /**
    * Roles of the faces the approximation deforms. Everything else keeps its
    * folded transform, so seals and flaps stay rigid while panels billow.
@@ -247,9 +335,122 @@ export interface FormedShapeSpec {
   faceRoles?: string[];
   /**
    * Roles of the faces held flat — the crimped end seals on a pillow bag, the
-   * side seals on a pouch.
+   * side seals on a pouch. Used by `tube` and `gusseted_pouch` only.
    */
   flatFaceRoles?: string[];
+  /**
+   * `lofted_profile` only: cross-sections along the up-axis, in any order —
+   * sorted by `y` before use. Needs at least two.
+   */
+  stations?: LoftStationSpec[];
+  /**
+   * `lofted_profile` only: seal faces (a fin, a side seal) that are not part
+   * of the lofted surface. Each is placed at the seam nearest its own flat-x
+   * span, folded flat against the surface for `sealStyle: 'fin'` (the
+   * default — a separate flap, offset out from the surface by 2x caliper,
+   * lying along the local tangent toward `flapFold`) or, for `sealStyle:
+   * 'lap'`, treated as a continuation of the lofted surface itself (no
+   * separate flap at all) — the physically correct picture for an overlap
+   * seal, and why it does not protrude the way a mis-modelled fin does.
+   */
+  flapFaceRoles?: string[];
+  /** `lofted_profile` only, `sealStyle: 'fin'`: which side the flap folds onto. Defaults to 'left'. */
+  flapFold?: 'left' | 'right';
+  /** `lofted_profile` only: how flap faces are placed. Defaults to 'fin'. */
+  sealStyle?: 'fin' | 'lap';
+  /**
+   * `lofted_profile` only: rotates where girth-fraction t = 0 (the seam)
+   * lands on the cross-section, in degrees. Defaults to 0 — the seam at the
+   * ellipse's own widest point, i.e. the flat pattern's own left edge — which
+   * is wrong for a wrap-formed tube: the seam is where the flat web's TWO
+   * edges meet, diametrically opposite the panel that does not touch it. For
+   * a fin-seal bag laid out fin | back-left | front | back-right | fin, that
+   * places the seam at -90 (or 90, sign is a fold-direction choice) so it
+   * lands mid-BACK rather than at the tube's side edge.
+   */
+  girthPhaseDeg?: number;
+  /**
+   * `lofted_profile` only: per-role override of how a round face's own flat
+   * x maps to girth-fraction t, as [t at the face's own min-x, t at its own
+   * max-x] (linear between). Every role WITHOUT an entry here uses the
+   * default shared mapping — `(x - girthX0) / girth` — which assumes every
+   * round face occupies a DISTINCT slice of x along one continuously
+   * wrapped web, true for a wrap-formed tube (pillow, gusseted). It is NOT
+   * true for two panels stacked in y at the SAME x range and joined only by
+   * discrete side seals, like a stand-up pouch's front and back: both need
+   * an explicit span (e.g. front: [0, 0.5], back: [1, 0.5], the reversed
+   * order tracing the loop's other half) since there is no continuous x to
+   * derive one from.
+   */
+  faceAngularSpan?: Record<string, [number, number]>;
+  /**
+   * `lofted_profile` only: per-role override of a round face's own OUTPUT y,
+   * as [world y at the face's own min flat-y, world y at its own max flat-y]
+   * (linear between). Every role WITHOUT an entry uses its flat y directly
+   * (the default, exact for a wrap-formed tube, where every round face
+   * shares one continuous length axis). It is NOT exact for panels that sit
+   * in DIFFERENT rows of the flat pattern but must occupy the SAME assembled
+   * length — a stand-up pouch's front and back, stacked head-to-tail in the
+   * flat web, need to end up standing side by side: front's own flat y is
+   * reflected (its near-base edge and its top-seal edge swap ends) so its
+   * base lands at the SAME world y as back's. The STATION lookup
+   * (`surfaceAt`) always uses flat y, never this — only the point's final
+   * position moves.
+   */
+  faceWorldY?: Record<string, [Expr, Expr]>;
+  /**
+   * `lofted_profile` only: a constant mm offset added to a round face's own
+   * z, keyed by role — a straight nudge along the loft's own depth axis, on
+   * top of whatever `surfaceAt` already gives it. Together with
+   * `faceWorldY`, this is what turns "swept back along y" into "actually
+   * folded flat against a panel": a folded band that only moved in y would
+   * sit almost exactly where the body panel it now overlaps already is
+   * (both being thin near a crimp), reading as invisible rather than
+   * folded. Nudging it toward whichever side it's meant to lie against
+   * (negative toward the back pole, positive toward the front, in this
+   * engine's own convention) separates the two surfaces enough to paint-sort
+   * correctly — hidden behind the panel it's folded under when viewed from
+   * the far side, visible in front of it from the near side — the way a
+   * real folded, glued tab actually occludes.
+   */
+  faceDepthOffset?: Record<string, Expr>;
+  /**
+   * `lofted_profile` only: explicit girth-fraction t a flap face attaches
+   * at, keyed by role. Overrides the default auto-detection (nearest of
+   * girthX0/girthX1 to the flap's own flat-x span), which — like the
+   * default `faceAngularSpan` mapping — assumes a single continuously
+   * wrapped web and is wrong for a style with more than one physical seam
+   * position (e.g. two independent side seals, each needing its own t).
+   */
+  flapAttachT?: Record<string, number>;
+  /**
+   * `lofted_profile` only: faces that are not swept along the loft at all —
+   * a bottom gusset that opens into a flat oval and welds to the loft's own
+   * lowest station, e.g. a stand-up pouch's base. Each role also needs a
+   * `faceAngularSpan` entry: its own flat x maps to the girth-fraction t
+   * range of the RIM it welds to, so the base's opened edge is read
+   * directly off the wall's own station formula (guaranteed to match,
+   * being the same function) rather than re-derived independently.
+   */
+  baseFaceRoles?: string[];
+  /**
+   * `lofted_profile`, with `baseFaceRoles` only: the loft-space (flat-y
+   * domain) y each base role welds to, keyed by role — a station y
+   * (typically the lowest), used to look up the rim's own cross-section via
+   * `surfaceAt`. NOT necessarily the base face's own flat y, since a base
+   * panel usually sits in an entirely different part of the flat pattern
+   * (e.g. a fold or two away) than the wall whose rim it welds to. See
+   * `baseWorldY` for where the welded result actually ends up.
+   */
+  baseWeldY?: Record<string, Expr>;
+  /**
+   * `lofted_profile`, with `baseFaceRoles` only: the single world y a base
+   * role collapses onto once opened, keyed by role — the wall's own
+   * OUTPUT y (after any `faceWorldY` remapping) at the weld line, not
+   * `baseWeldY` itself. Defaults to `baseWeldY`'s own value, correct only
+   * when the welded wall has no `faceWorldY` override at that point.
+   */
+  baseWorldY?: Record<string, Expr>;
   /**
    * How full the pack is, 0 to 1. Drives how far the section rounds out.
    * Presentation only; it never affects the dieline.

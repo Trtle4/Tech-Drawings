@@ -57,6 +57,16 @@ export const bagPillow: StyleDefinition = {
       hint: 'Cutoff length, including both end seal bands.',
     },
     {
+      id: 'bagD',
+      label: 'Bag depth',
+      group: 'internal',
+      unit: 'mm',
+      default: 60,
+      min: 10,
+      step: 1,
+      hint: 'Filled depth at the midpoint, front to back. 3D view only — does not affect the dieline.',
+    },
+    {
       id: 'caliper',
       label: 'Film gauge',
       group: 'material',
@@ -104,6 +114,14 @@ export const bagPillow: StyleDefinition = {
       { id: 'end_top', size: 'endSeal' },
     ],
     cells: [
+      // The fin sits at mid-back (girthPhaseDeg, below) folded flat against
+      // back_panel_left, so ordinary depth sort is now correct on its own:
+      // genuinely behind front_panel from the front (properly hidden),
+      // genuinely nearest camera from the back (properly visible). ply
+      // would force it to draw on top unconditionally, which was needed
+      // when the fin sat at the tube's side edge with an ambiguous depth
+      // relationship to the panel beside it, but is wrong now — it would
+      // show the fin THROUGH the front panel that is supposed to hide it.
       { row: 'body', col: 'fin_l', role: 'fin_left', kind: 'seal' },
       { row: 'body', col: 'back_l', role: 'back_panel_left', kind: 'panel' },
       { row: 'body', col: 'front', role: 'front_panel', kind: 'panel', base: true },
@@ -133,21 +151,68 @@ export const bagPillow: StyleDefinition = {
     ],
   },
 
-  // A filled pillow bag is a tube of fixed girth (front + back only — the fin
-  // is two plies pressed flat and sealed, not part of the round section),
-  // round at the body's midpoint and crimped flat at the true top/bottom
-  // seals. The fin stays flat its whole length, body and ends alike.
+  // A filled pillow bag is a loft: flat crimp at the bottom seal, out to an
+  // oval bagW x bagD at the body's midpoint, back down to a flat crimp at the
+  // top seal — five stations, one shared engine (see formedShape.ts). Every
+  // face sharing the front/back columns rides that same lofted surface,
+  // including the end-band panels themselves (front_end_bottom etc.): they
+  // are the SAME material as the body panel, just at a y inside the flat
+  // crimp region, so the loft already draws them flat with no separate cap
+  // case. The fin is not part of that surface at all — it folds flat against
+  // the body at double film thickness, toward flapFold, rather than standing
+  // out from it (sealStyle: 'lap' is the no-protrusion overlap alternative).
   formedShape: {
-    kind: 'crimped_tube',
-    faceRoles: ['front_panel', 'back_panel_left', 'back_panel_right'],
-    flatFaceRoles: [
-      'front_end_bottom', 'back_left_end_bottom', 'back_right_end_bottom',
-      'front_end_top', 'back_left_end_top', 'back_right_end_top',
-      'fin_left', 'fin_right',
-      'fin_left_end_bottom', 'fin_right_end_bottom',
-      'fin_left_end_top', 'fin_right_end_top',
+    kind: 'lofted_profile',
+    faceRoles: [
+      'front_panel', 'front_end_bottom', 'front_end_top',
+      'back_panel_left', 'back_left_end_bottom', 'back_left_end_top',
+      'back_panel_right', 'back_right_end_bottom', 'back_right_end_top',
     ],
-    fill: '0.8',
+    flapFaceRoles: [
+      'fin_left', 'fin_left_end_bottom', 'fin_left_end_top',
+      'fin_right', 'fin_right_end_bottom', 'fin_right_end_top',
+    ],
+    flapFold: 'left',
+    sealStyle: 'fin',
+    // The blank wraps fin | back-left | front | back-right | fin, so the
+    // seam (t = 0, girthX0) is where the web's two edges meet — physically
+    // mid-BACK, diametrically opposite front_panel's own centre, not the
+    // tube's side. -90 rotates the cross-section so t = 0 lands there: from
+    // the front the fin sits exactly on the centreline, invisible under the
+    // panel it's folded flat against; from the back it's the centre line.
+    girthPhaseDeg: -90,
+    // halfWidth is omitted at every station — the engine derives it so the
+    // section's own perimeter matches girth, which is what makes the crimp
+    // read WIDER than the round midpoint: the same fixed length of film
+    // wrapped around less depth has to spread further sideways to use it
+    // all, same as a real flattened tube does.
+    //
+    // The crimp's own halfDepth is max(caliper, bagD*0.06), not caliper
+    // alone: a real crimped seal is a couple of plies pressed together, not
+    // a mathematical zero, and at true film thickness (a few hundredths of a
+    // mm against a body tens of mm deep) it draws as a bare outline with no
+    // visible fill — reading as a stray line, not the flat tab it actually
+    // is. Scaling the floor off the bag's own depth keeps it legible at any
+    // bagD while still reading as clearly, dramatically flatter than the
+    // round body.
+    // Shoulder stations (2, 4) hold the depth near-full across most of the
+    // body — PCHIP already gives a smooth curve between any two stations, so
+    // three stations plus PCHIP was still a lens: nothing stopped the profile
+    // falling away toward bagD/2 immediately past the midpoint. Adding a
+    // station 15% of the body span in from each end seal, near bagD/2, gives
+    // the interpolator a flat-ish plateau to hold through the body and only
+    // a short 15%-of-body run to taper through on its way into the crimp —
+    // the interpolator itself is untouched.
+    stations: [
+      { y: '0', halfDepth: 'max(caliper, bagD*0.06)' },
+      { y: 'endSeal', halfDepth: 'max(caliper, bagD*0.06)' },
+      { y: 'endSeal + (bagL - 2*endSeal)*0.15', halfDepth: 'bagD/2*0.92' },
+      { y: 'bagL/2', halfDepth: 'bagD/2' },
+      { y: 'bagL - endSeal - (bagL - 2*endSeal)*0.15', halfDepth: 'bagD/2*0.92' },
+      { y: 'bagL - endSeal', halfDepth: 'max(caliper, bagD*0.06)' },
+      { y: 'bagL', halfDepth: 'max(caliper, bagD*0.06)' },
+    ],
+    fill: '0.85',
   },
 
   seals: [

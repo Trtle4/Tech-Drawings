@@ -1,35 +1,43 @@
 import type { StyleDefinition } from '../schema.js';
 
 /**
- * Side-gusseted bag — fin seal.
+ * Block-bottom (fold-under) gusseted bag — fin seal.
  *
- * A pillow bag with a V-fold gusset tucked into each side, so the formed bag is
- * a rectangular tube W wide by D deep rather than a flat pillow.
+ * Structurally IDENTICAL to bag-gusseted.ts — same grid, same params, same
+ * lofted cross-section (superellipse, girth-conserving, dog-eared crimp
+ * bands) — because it is the same bag. The only difference is what happens
+ * to the BOTTOM crimp band once it's sealed: instead of hanging off the
+ * bottom the way the top seal does, it folds back 180° at the hinge where
+ * it meets the round body, and lies flat against it — a real, common
+ * construction (a "fold-under" or "pinch and fold" bottom), not a
+ * separately-built flat box floor. Front view should read almost exactly
+ * like the gusseted bag, but with a visible folded tab at the bottom instead
+ * of a band hanging past the last row of body panels.
  *
  *   columns   fin(F) | back½(W/2) | gusset_l_back(D/2) | gusset_l_front(D/2)
  *             | FRONT(W) |
  *             gusset_r_front(D/2) | gusset_r_back(D/2) | back½(W/2) | fin(F)
  *
- * Web = 2F + 2W + 2D. Tube circumference is front W + back W plus D of material
- * per gusset, and the two fin strips sit outside that.
+ * Web = 2F + 2W + 2D, identical to the gusseted bag.
  *
- * Folds to the LAY-FLAT bag, as the pillow does — 180° at every tube fold so
- * the gussets tuck flat between front and back, 90° at each fin so the two fin
- * strips stand face to face. Extents are W × L × F. In lay-flat the two fins
- * land together over the centre of the front panel, which is where the back
- * seam sits when the bag is viewed flat.
+ * Folds to the LAY-FLAT bag, as the gusseted bag does — 180° at every tube
+ * fold so the gussets tuck flat between front and back, 90° at each fin so
+ * the two fin strips stand face to face. Extents are W × L × F. The fold-back
+ * of the bottom band is out of scope for the rigid fold and lives entirely
+ * in formedShape, as a y remap — the band's own cross-section shape is
+ * untouched, only where it ends up in the assembled bag.
  *
  * ASSUMPTIONS TO CHECK: gusset depth D is the formed front-to-back depth, and
- * each gusset contributes D of flat material folded at its centre. End seals
- * count inside the cutoff length.
+ * each gusset contributes D of flat material folded at its centre. Both end
+ * seals count inside the cutoff length.
  */
-export const bagGusseted: StyleDefinition = {
-  id: 'bag.gusseted',
-  name: 'Side Gusseted Bag',
+export const bagBlockBottom: StyleDefinition = {
+  id: 'bag.block_bottom',
+  name: 'Block-Bottom Bag',
   family: 'bag',
-  description: 'Fin-seal bag with a V-fold gusset in each side, forming a rectangular tube.',
+  description: 'Side-gusseted, fin-seal bag whose bottom crimp seal folds back flat against the body instead of hanging past it.',
 
-  // Same reasoning as the pillow bag: vertical wrap creases leave y alone.
+  // Same reasoning as the other wrap-style bags: vertical wrap creases leave y alone.
   upAxis: 'y',
 
   params: [
@@ -38,7 +46,7 @@ export const bagGusseted: StyleDefinition = {
       label: 'Bag width',
       group: 'internal',
       unit: 'mm',
-      default: 120,
+      default: 100,
       min: 20,
       step: 1,
       hint: 'Front panel width of the formed bag.',
@@ -48,7 +56,7 @@ export const bagGusseted: StyleDefinition = {
       label: 'Gusset depth',
       group: 'internal',
       unit: 'mm',
-      default: 70,
+      default: 60,
       min: 10,
       step: 1,
       hint: 'Formed front-to-back depth.',
@@ -58,8 +66,8 @@ export const bagGusseted: StyleDefinition = {
       label: 'Bag length',
       group: 'internal',
       unit: 'mm',
-      default: 300,
-      min: 40,
+      default: 280,
+      min: 60,
       step: 1,
       hint: 'Cutoff length, including both end seal bands.',
     },
@@ -140,12 +148,14 @@ export const bagGusseted: StyleDefinition = {
     ],
   },
 
-  // Same lofted-cross-section engine as the pillow bag (see formedShape.ts
-  // and bag-pillow.ts) — a girth-conserving ellipse swept along the length,
-  // flat crimp at each end, out to bagD/2 at the middle. The gussets are not
-  // a special case: they are simply more round faceRoles, spanning a wider
-  // share of the same girth, so the SAME station list, phase, dog-ear
-  // folding and crimp treatment apply with no bag-specific geometry code.
+  // Byte-for-byte the gusseted bag's own loft (see bag-gusseted.ts) — same
+  // stations, same superellipse sharpness, same girth-derived halfWidth and
+  // dog-eared crimp bands — plus one addition: faceWorldY folds the BOTTOM
+  // band's own output y back across its hinge with the body (y = endSeal)
+  // instead of leaving it running out past y = 0. The band's own
+  // cross-section (x, z) is computed exactly as it would be for a normal
+  // hanging crimp band — surfaceAt only ever sees flat y, never the remapped
+  // one — so this is purely a placement change, not a different shape.
   formedShape: {
     kind: 'lofted_profile',
     faceRoles: [
@@ -163,38 +173,47 @@ export const bagGusseted: StyleDefinition = {
     ],
     flapFold: 'left',
     sealStyle: 'fin',
-    // Front sits at the physical centre of the girth path regardless of how
-    // many gusset panels lie between it and the seam — the layout is
-    // symmetric front-to-back, so the seam is always exactly half the girth
-    // away from front-centre. Same -90 as the pillow.
     girthPhaseDeg: -90,
-    // Unlike the pillow (front barely wider than the fin between the two
-    // back halves), front and back here are each a full bagW-wide flat
-    // panel with all the folding concentrated at the four narrow gusset
-    // corners — a rectangular tube, not a smooth oval. `superellipse` bows
-    // the cross-section toward a rounded rectangle so the flat panels
-    // actually read as flat; sharpness 10 (up from an earlier, too-soft 3,
-    // then 6) holds them flatter still and turns the gusset corners over
-    // sharply.
-    //
-    // Tried `rounded_rect` here first — it is a TRUE rounded rectangle
-    // where a superellipse only ever approaches flat sides asymptotically —
-    // but it broke the dog-ear/envelope machinery: that machinery finds a
-    // boundary's own excess by reading `surfaceAt` at that boundary's own
-    // t, which relies on t corresponding to the SAME relative position on
-    // the curve a plain ellipse would put it at (the girth math, and the
-    // flat pattern's own column proportions, were laid out assuming that).
-    // A superellipse preserves that correspondence exactly, being a
-    // continuous reshaping of the SAME angle parametrization; `rounded_rect`
-    // does not — it walks arc length, which redistributes non-uniformly
-    // relative to angle, so an internal panel boundary (a gusset-to-gusset
-    // seam, not just the seam or front-centre) lands at a different
-    // geometric position than intended and reads the wrong excess there.
-    // The measured symptom was a wasp waist again (crimp narrower than
-    // midpoint) — exactly the bug the pillow's own dog-ear work fixed —
-    // so `rounded_rect` is right for a station whose own halfWidth is
-    // explicit (the block-bottom bag's boxy body, no dog-ears in play) but
-    // wrong here, where halfWidth is girth-derived.
+    // Every bottom-band role has the SAME flat y-range (0..endSeal, with
+    // endSeal — the hinge, shared with the body — its own max.y), so the
+    // same reflection pair applies to all of them: y = endSeal stays put,
+    // y = 0 (the band's own free edge) swings across it to 2*endSeal —
+    // INTO the body's own y-range, where the fold physically lands it,
+    // instead of past y = 0 where an un-folded band would hang.
+    faceWorldY: {
+      front_end_bottom: ['2*endSeal', 'endSeal'],
+      back_left_end_bottom: ['2*endSeal', 'endSeal'],
+      back_right_end_bottom: ['2*endSeal', 'endSeal'],
+      gusset_left_back_end_bottom: ['2*endSeal', 'endSeal'],
+      gusset_left_front_end_bottom: ['2*endSeal', 'endSeal'],
+      gusset_right_front_end_bottom: ['2*endSeal', 'endSeal'],
+      gusset_right_back_end_bottom: ['2*endSeal', 'endSeal'],
+      fin_left_end_bottom: ['2*endSeal', 'endSeal'],
+      fin_right_end_bottom: ['2*endSeal', 'endSeal'],
+    },
+    // The fold-back alone (faceWorldY, above) repositions the bottom band's
+    // points in y but leaves its (x, z) cross-section exactly as a normal
+    // hanging crimp band would have it — nearly flat, nearly z = 0 — which
+    // is also where the body panel it now overlaps in y already sits, so
+    // the two surfaces coincide and the fold reads as "missing" rather than
+    // "folded flat against the body". Nudging the band toward the back pole
+    // (negative z, this engine's convention) separates it enough to
+    // paint-sort as a real, glued tab lying against the body — visible as a
+    // distinct crease/seam line from the front, hidden behind the body from
+    // the back, the way the actual folded seal occludes. Sized off bagD
+    // (capped at 3mm) rather than caliper, since caliper alone (a fraction
+    // of a mm) is invisible at this scale.
+    faceDepthOffset: {
+      front_end_bottom: '-min(3, bagD*0.05)',
+      back_left_end_bottom: '-min(3, bagD*0.05)',
+      back_right_end_bottom: '-min(3, bagD*0.05)',
+      gusset_left_back_end_bottom: '-min(3, bagD*0.05)',
+      gusset_left_front_end_bottom: '-min(3, bagD*0.05)',
+      gusset_right_front_end_bottom: '-min(3, bagD*0.05)',
+      gusset_right_back_end_bottom: '-min(3, bagD*0.05)',
+      fin_left_end_bottom: '-min(3, bagD*0.05)',
+      fin_right_end_bottom: '-min(3, bagD*0.05)',
+    },
     stations: [
       { y: '0', halfDepth: 'max(caliper, bagD*0.06)', profile: { family: 'superellipse', sharpness: 10 } },
       { y: 'endSeal', halfDepth: 'max(caliper, bagD*0.06)', profile: { family: 'superellipse', sharpness: 10 } },
@@ -209,7 +228,7 @@ export const bagGusseted: StyleDefinition = {
 
   seals: [
     {
-      id: 'bag.gusseted:fin',
+      id: 'bag.block_bottom:fin',
       kind: 'fin',
       role: 'back_fin_seal',
       boundFaceRoles: ['fin_left', 'fin_right'],
@@ -217,16 +236,15 @@ export const bagGusseted: StyleDefinition = {
       plies: 2,
     },
     {
-      id: 'bag.gusseted:end_bottom',
+      id: 'bag.block_bottom:end_bottom',
       kind: 'fin',
       role: 'bottom_end_seal',
       boundFaceRoles: ['front_end_bottom', 'back_left_end_bottom', 'back_right_end_bottom'],
       width: 'endSeal',
-      // Six plies through the gusset, where four layers of film are crimped.
       plies: 6,
     },
     {
-      id: 'bag.gusseted:end_top',
+      id: 'bag.block_bottom:end_top',
       kind: 'fin',
       role: 'top_end_seal',
       boundFaceRoles: ['front_end_top', 'back_left_end_top', 'back_right_end_top'],

@@ -14,7 +14,8 @@
     "demo:theme": "tsx scripts/build-theme-preview.ts",
     "build:gallery": "tsx scripts/build-preview.ts",
     "build:app": "tsx scripts/build-app.ts",
-    "export:dxf": "tsx scripts/export-dxf.ts"
+    "export:dxf": "tsx scripts/export-dxf.ts",
+    "render:check": "tsx scripts/render-formed-check.ts"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",
