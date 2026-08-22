@@ -22,6 +22,10 @@ function boot(): void {
         <button class="tbtn icon" id="btn-undo" title="Undo (Ctrl+Z)">↶</button>
         <button class="tbtn icon" id="btn-redo" title="Redo (Ctrl+Shift+Z)">↷</button>
       </div>
+      <div class="toolbar-group" id="unit-controls">
+        <button class="tbtn" id="unit-mm" title="Display dimensions in millimetres">mm</button>
+        <button class="tbtn" id="unit-in" title="Display dimensions in inches">in</button>
+      </div>
       <div class="spacer"></div>
       <button class="btn" id="btn-revert-all" title="Undo every edit in the drawing; dimensions are left alone">Revert all</button>
     </header>
@@ -49,6 +53,29 @@ function boot(): void {
   mountCanvas(root.querySelector<HTMLElement>('#pane-2d')!, store);
   mountPane3D(root.querySelector<HTMLElement>('#pane-3d')!, store);
   mountHistoryControls(root, store);
+  mountUnitToggle(root, store);
+}
+
+/**
+ * mm/inch is a single global toggle in the header, not a per-pane control —
+ * it changes how every dimension callout (2D, 3D, PNG export) reads its
+ * text, nothing about the model, so one switch for the whole app is right.
+ */
+function mountUnitToggle(root: HTMLElement, store: Store): void {
+  const mmBtn = root.querySelector<HTMLButtonElement>('#unit-mm')!;
+  const inBtn = root.querySelector<HTMLButtonElement>('#unit-in')!;
+
+  function render(): void {
+    const unit = store.getState().unit;
+    mmBtn.classList.toggle('on', unit === 'mm');
+    inBtn.classList.toggle('on', unit === 'in');
+  }
+
+  mmBtn.addEventListener('click', () => store.setUnit('mm'));
+  inBtn.addEventListener('click', () => store.setUnit('in'));
+
+  store.subscribe(render);
+  render();
 }
 
 /**

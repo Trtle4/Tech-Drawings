@@ -8,7 +8,7 @@
 import type { DrawingLine, GeometryGraph, ResolvedGeometry, Vec2 } from '../geometry/types.js';
 import { faceInteriorPoint } from '../geometry/faces.js';
 import { flattenPath } from '../geometry/arrangement.js';
-import { computeDimension, drawDimensionCanvas, formatLengthMm } from './dimension.js';
+import { computeDimension, drawDimensionCanvas, formatLength, type LengthUnit } from './dimension.js';
 
 const LINE_STYLE: Record<string, { color: string; width: number; dash: number[] }> = {
   cut: { color: '#1a1a1a', width: 1.6, dash: [] },
@@ -37,7 +37,7 @@ export interface Drawing2DExportResult {
  * fixed 4px/mm — legible on screen and in an email/doc, not meant as a
  * print-at-scale file (that's what the DXF export is for).
  */
-export function renderDrawing2D(graph: GeometryGraph, resolved: ResolvedGeometry): Drawing2DExportResult {
+export function renderDrawing2D(graph: GeometryGraph, resolved: ResolvedGeometry, unit: LengthUnit = 'mm'): Drawing2DExportResult {
   const blank = resolved.blankBounds;
   const inner = blank ?? { min: { x: 0, y: 0 }, max: { x: 10, y: 10 } };
   const outer = {
@@ -65,7 +65,7 @@ export function renderDrawing2D(graph: GeometryGraph, resolved: ResolvedGeometry
 
   drawLines(ctx, graph.lines, toPx);
   drawFaceLabels(ctx, resolved, toPx);
-  if (blank) drawOverallDimensions(ctx, blank, toPx);
+  if (blank) drawOverallDimensions(ctx, blank, toPx, unit);
 
   return { canvas, widthPx, heightPx };
 }
@@ -99,13 +99,13 @@ function drawFaceLabels(ctx: CanvasRenderingContext2D, resolved: ResolvedGeometr
   }
 }
 
-function drawOverallDimensions(ctx: CanvasRenderingContext2D, bounds: { min: Vec2; max: Vec2 }, toPx: (p: Vec2) => Vec2): void {
+function drawOverallDimensions(ctx: CanvasRenderingContext2D, bounds: { min: Vec2; max: Vec2 }, toPx: (p: Vec2) => Vec2, unit: LengthUnit): void {
   const bl = toPx({ x: bounds.min.x, y: bounds.min.y });
   const br = toPx({ x: bounds.max.x, y: bounds.min.y });
   const tl = toPx({ x: bounds.min.x, y: bounds.max.y });
   const width = computeDimension(bl, br, 1, DIM_OFFSET_PX, DIM_ARROW_PX);
   const height = computeDimension(bl, tl, -1, DIM_OFFSET_PX, DIM_ARROW_PX);
   const color = '#0f6e77';
-  drawDimensionCanvas(ctx, width, formatLengthMm(bounds.max.x - bounds.min.x), color);
-  drawDimensionCanvas(ctx, height, formatLengthMm(bounds.max.y - bounds.min.y), color);
+  drawDimensionCanvas(ctx, width, formatLength(bounds.max.x - bounds.min.x, unit), color);
+  drawDimensionCanvas(ctx, height, formatLength(bounds.max.y - bounds.min.y, unit), color);
 }

@@ -16,7 +16,7 @@
  */
 import type { DrawingLine, LineType, Path, Vec2 } from '../geometry/types.js';
 import { flattenPath } from '../geometry/arrangement.js';
-import { computeDimension, formatLengthMm, type DimensionGeometry } from '../render/dimension.js';
+import { computeDimension, formatLength, type DimensionGeometry } from '../render/dimension.js';
 import { isLineOverridden, translatePath } from './overrides.js';
 import { findCoincidentPoints, hitTestEndpoint, hitTestFace, hitTestLine } from './hitTest.js';
 import {
@@ -448,9 +448,10 @@ export function mountCanvas(container: HTMLElement, store: Store): CanvasControl
       const tl = toScreen({ x: bounds.min.x, y: bounds.max.y });
       const width = computeDimension(bl, br, 1, DIM_OFFSET_PX, DIM_ARROW_PX);
       const height = computeDimension(bl, tl, -1, DIM_OFFSET_PX, DIM_ARROW_PX);
+      const unit = store.getState().unit;
       return (
-        renderDimensionSvg(width, formatLengthMm(bounds.max.x - bounds.min.x)) +
-        renderDimensionSvg(height, formatLengthMm(bounds.max.y - bounds.min.y))
+        renderDimensionSvg(width, formatLength(bounds.max.x - bounds.min.x, unit)) +
+        renderDimensionSvg(height, formatLength(bounds.max.y - bounds.min.y, unit))
       );
     })();
 

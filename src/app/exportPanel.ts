@@ -40,7 +40,7 @@ export function mountExportPanel(container: HTMLElement, store: Store): ExportPa
 
     try {
       if (id === 'export-png') {
-        const { canvas } = renderDrawing2D(graph, resolved);
+        const { canvas } = renderDrawing2D(graph, resolved, store.getState().unit);
         canvasToPngBlob(canvas)
           .then((blob) => downloadBlob(blob, `${styleId}-drawing.png`))
           .catch((e) => {

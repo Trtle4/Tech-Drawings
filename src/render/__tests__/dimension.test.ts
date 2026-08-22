@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assembleDimension, computeDimension, formatLengthMm } from '../dimension.js';
+import { assembleDimension, computeDimension, formatLength } from '../dimension.js';
 
 describe('assembleDimension — the general 4-point case (the 3D pane\'s own shape)', () => {
   it('handles a dimension line NOT parallel to the measured segment (an offset applied before projection)', () => {
@@ -95,9 +95,14 @@ describe('computeDimension', () => {
   });
 });
 
-describe('formatLengthMm', () => {
-  it('renders one decimal place with a unit suffix', () => {
-    expect(formatLengthMm(123.456)).toBe('123.5 mm');
-    expect(formatLengthMm(0)).toBe('0.0 mm');
+describe('formatLength', () => {
+  it('renders mm with one decimal place', () => {
+    expect(formatLength(123.456, 'mm')).toBe('123.5 mm');
+    expect(formatLength(0, 'mm')).toBe('0.0 mm');
+  });
+
+  it('renders inches, converted from mm, with two decimal places', () => {
+    expect(formatLength(25.4, 'in')).toBe('1.00 in');
+    expect(formatLength(0, 'in')).toBe('0.00 in');
   });
 });

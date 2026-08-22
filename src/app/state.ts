@@ -19,6 +19,7 @@ import { compileStyle } from '../styles/compile.js';
 import type { StyleDefinition } from '../styles/schema.js';
 import { applyOverrides, describeStaleOp, type OverrideOp } from './overrides.js';
 import { DEFAULT_SNAP, fitToBounds, type Camera2D, type SnapSettings, type Viewport } from './camera2d.js';
+import type { LengthUnit } from '../render/dimension.js';
 
 export type Selection = { kind: 'line'; lineId: string } | { kind: 'face'; faceId: string } | null;
 
@@ -75,6 +76,8 @@ export interface AppState {
   dims3d: boolean;
   /** Flap faces currently checked for a group hinge-angle edit — see flapPanel.ts. View state, not content: it names faces, not an edit. */
   flapSelection: string[];
+  /** Display unit for dimension callouts (2D, 3D, PNG export) — mm everywhere internally, this only changes the text. */
+  unit: LengthUnit;
 }
 
 export interface StaleOverride {
@@ -142,6 +145,7 @@ export function createInitialState(styleId?: string): AppState {
     dims2d: true,
     dims3d: true,
     flapSelection: [],
+    unit: 'mm',
   };
 }
 
@@ -275,6 +279,10 @@ export class Store {
 
   setDims3D(on: boolean): void {
     this.set({ dims3d: on });
+  }
+
+  setUnit(unit: LengthUnit): void {
+    this.set({ unit });
   }
 
   pushOp(op: OverrideOp): void {

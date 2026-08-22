@@ -21,7 +21,7 @@ import type { Vec2, Vec3 } from '../geometry/types.js';
 import { computeFormedShape, hasFormedShape, type FormedFace } from '../geometry/formedShape.js';
 import { cameraBasis, project, projectFormedFaces, type CameraBasis, type ProjectedFacet } from '../render/iso.js';
 import { mmToPx, pixelFrame, triangleAffine, type PixelFrame } from '../render/texture.js';
-import { assembleDimension, drawDimensionCanvas, formatLengthMm } from '../render/dimension.js';
+import { assembleDimension, drawDimensionCanvas, formatLength, type LengthUnit } from '../render/dimension.js';
 import { fitToBounds, modelToScreen, pan as panView, zoomAt, type Camera2D, type Viewport } from './camera2d.js';
 import { DEFAULT_ORBIT, type ArtworkState, type Store } from './state.js';
 
@@ -215,7 +215,7 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
    * reads perfectly from every possible orbit angle (an inherent property
    * of dimensioning a rotatable 3D view, not something worth chasing here).
    */
-  function paintDimensions3D(bounds: { min: Vec3; max: Vec3 }, cam: CameraBasis, view: Camera2D, vp: Viewport, color: string): void {
+  function paintDimensions3D(bounds: { min: Vec3; max: Vec3 }, cam: CameraBasis, view: Camera2D, vp: Viewport, color: string, unit: LengthUnit): void {
     const dx = bounds.max.x - bounds.min.x;
     const dy = bounds.max.y - bounds.min.y;
     const dz = bounds.max.z - bounds.min.z;
@@ -233,7 +233,7 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
       const d1 = { x: p1.x + off.x, y: p1.y + off.y, z: p1.z + off.z };
       const d2 = { x: p2.x + off.x, y: p2.y + off.y, z: p2.z + off.z };
       const g = assembleDimension(toScreen(p1), toScreen(d1), toScreen(p2), toScreen(d2), DIM_ARROW_PX);
-      drawDimensionCanvas(ctx, g, formatLengthMm(widthOf), color);
+      drawDimensionCanvas(ctx, g, formatLength(widthOf, unit), color);
     };
 
     const min = bounds.min;
@@ -312,7 +312,7 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
     }
 
     if (state.dims3d && worldBounds) {
-      paintDimensions3D(worldBounds, cam, view, vp, themeColor('--l-dimension', '#0f6e77'));
+      paintDimensions3D(worldBounds, cam, view, vp, themeColor('--l-dimension', '#0f6e77'), state.unit);
     }
   }
 

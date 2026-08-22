@@ -93,9 +93,11 @@ export function computeDimension(p1: Vec2, p2: Vec2, offsetSide: 1 | -1, offsetP
   return assembleDimension(p1, add(p1, offset), p2, add(p2, offset), arrowSizePx);
 }
 
-/** `123.4 mm` — the one place a dimension value becomes display text, so a future mm/inch toggle has one call site to change. */
-export function formatLengthMm(mm: number): string {
-  return `${mm.toFixed(1)} mm`;
+export type LengthUnit = 'mm' | 'in';
+
+/** `123.4 mm` or `4.86 in` — the one place a dimension value becomes display text, so the mm/inch toggle has one call site to change. Values stay mm internally everywhere else; this is display-only. */
+export function formatLength(mm: number, unit: LengthUnit): string {
+  return unit === 'in' ? `${(mm / 25.4).toFixed(2)} in` : `${mm.toFixed(1)} mm`;
 }
 
 /**
