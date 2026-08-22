@@ -21,7 +21,7 @@ import type { Vec2, Vec3 } from '../geometry/types.js';
 import { computeFormedShape, hasFormedShape, type FormedFace } from '../geometry/formedShape.js';
 import { cameraBasis, project, projectFormedFaces, type CameraBasis, type ProjectedFacet } from '../render/iso.js';
 import { mmToPx, pixelFrame, triangleAffine, type PixelFrame } from '../render/texture.js';
-import { assembleDimension, formatLengthMm, type DimensionGeometry } from '../render/dimension.js';
+import { assembleDimension, drawDimensionCanvas, formatLengthMm } from '../render/dimension.js';
 import { fitToBounds, modelToScreen, pan as panView, zoomAt, type Camera2D, type Viewport } from './camera2d.js';
 import { DEFAULT_ORBIT, type ArtworkState, type Store } from './state.js';
 
@@ -203,39 +203,6 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
   const DIM_MARGIN_FRACTION = 0.15;
   const DIM_ARROW_PX = 6;
 
-  /** Draws one already-assembled dimension (witnesses, line, arrowheads, label) with Canvas2D calls. */
-  function drawDimension(g: DimensionGeometry, text: string, color: string): void {
-    ctx.strokeStyle = color;
-    ctx.fillStyle = color;
-    ctx.lineWidth = 1;
-    for (const [a, b] of g.witnesses) {
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
-    }
-    ctx.beginPath();
-    ctx.moveTo(g.line[0].x, g.line[0].y);
-    ctx.lineTo(g.line[1].x, g.line[1].y);
-    ctx.stroke();
-    for (const tri of g.arrowheads) {
-      ctx.beginPath();
-      ctx.moveTo(tri[0].x, tri[0].y);
-      ctx.lineTo(tri[1].x, tri[1].y);
-      ctx.lineTo(tri[2].x, tri[2].y);
-      ctx.closePath();
-      ctx.fill();
-    }
-    ctx.save();
-    ctx.translate(g.label.pos.x, g.label.pos.y);
-    ctx.rotate(g.label.angle);
-    ctx.font = '11px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(text, 0, 0);
-    ctx.restore();
-  }
-
   /**
    * Overall width/height/depth of the formed pack's own world-space
    * bounding box — not a per-panel breakdown, the same "outside dimensions"
@@ -266,7 +233,7 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
       const d1 = { x: p1.x + off.x, y: p1.y + off.y, z: p1.z + off.z };
       const d2 = { x: p2.x + off.x, y: p2.y + off.y, z: p2.z + off.z };
       const g = assembleDimension(toScreen(p1), toScreen(d1), toScreen(p2), toScreen(d2), DIM_ARROW_PX);
-      drawDimension(g, formatLengthMm(widthOf), color);
+      drawDimensionCanvas(ctx, g, formatLengthMm(widthOf), color);
     };
 
     const min = bounds.min;

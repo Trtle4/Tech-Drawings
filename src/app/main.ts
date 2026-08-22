@@ -6,6 +6,7 @@ import { createInitialState, Store } from './state.js';
 import { mountPanel } from './panel.js';
 import { mountInspector } from './inspector.js';
 import { mountArtworkPanel } from './artworkPanel.js';
+import { mountExportPanel } from './exportPanel.js';
 import { mountCanvas } from './canvas.js';
 import { mountPane3D } from './pane3d.js';
 
@@ -28,6 +29,7 @@ function boot(): void {
         <div id="panel-body"></div>
         <div id="inspector-body"></div>
         <div id="artwork-body"></div>
+        <div id="export-body"></div>
       </aside>
       <div id="viewport" class="viewport-2d-primary">
         <div id="pane-2d" data-primary="2d"></div>
@@ -40,6 +42,7 @@ function boot(): void {
   mountPanel(root.querySelector<HTMLElement>('#panel-body')!, store);
   mountInspector(root.querySelector<HTMLElement>('#inspector-body')!, store);
   mountArtworkPanel(root.querySelector<HTMLElement>('#artwork-body')!, store);
+  mountExportPanel(root.querySelector<HTMLElement>('#export-body')!, store);
   mountCanvas(root.querySelector<HTMLElement>('#pane-2d')!, store);
   mountPane3D(root.querySelector<HTMLElement>('#pane-3d')!, store);
   mountHistoryControls(root, store);

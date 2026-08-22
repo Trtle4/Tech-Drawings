@@ -97,3 +97,43 @@ export function computeDimension(p1: Vec2, p2: Vec2, offsetSide: 1 | -1, offsetP
 export function formatLengthMm(mm: number): string {
   return `${mm.toFixed(1)} mm`;
 }
+
+/**
+ * Draws an already-assembled dimension with Canvas2D calls — shared by
+ * every canvas-based consumer (the 3D pane, the 2D drawing's PNG export)
+ * so the visual language (witness weight, arrowhead shape, label
+ * placement) can't drift between them. The SVG-based live 2D canvas draws
+ * the same `DimensionGeometry` its own way, as path strings, since it has
+ * no `CanvasRenderingContext2D` to hand this.
+ */
+export function drawDimensionCanvas(ctx: CanvasRenderingContext2D, g: DimensionGeometry, text: string, color: string, fontPx = 11): void {
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 1;
+  for (const [a, b] of g.witnesses) {
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.moveTo(g.line[0].x, g.line[0].y);
+  ctx.lineTo(g.line[1].x, g.line[1].y);
+  ctx.stroke();
+  for (const tri of g.arrowheads) {
+    ctx.beginPath();
+    ctx.moveTo(tri[0].x, tri[0].y);
+    ctx.lineTo(tri[1].x, tri[1].y);
+    ctx.lineTo(tri[2].x, tri[2].y);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.save();
+  ctx.translate(g.label.pos.x, g.label.pos.y);
+  ctx.rotate(g.label.angle);
+  ctx.font = `${fontPx}px monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 0, 0);
+  ctx.restore();
+}
