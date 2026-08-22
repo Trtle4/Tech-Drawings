@@ -312,6 +312,17 @@ export interface FormedShapeSpec {
    */
   girthPhaseDeg?: number;
   /**
+   * `lofted_profile` only: bows the cross-section from a plain ellipse
+   * (0, the default — right for a bag with no flat panel to hold, like the
+   * pillow, where front and back are barely wider than the fin between
+   * them) toward a rounded rectangle as it rises — right for a bag with
+   * wide flat panels and the folding concentrated at narrow corners, like
+   * a side-gusseted bag's rectangular tube. Reshapes the silhouette only;
+   * girth conservation is exact at the axis poles and approximate between
+   * them, same spirit as the crimp band's display-only depth floor.
+   */
+  cornerSharpness?: number;
+  /**
    * How full the pack is, 0 to 1. Drives how far the section rounds out.
    * Presentation only; it never affects the dieline.
    */

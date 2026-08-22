@@ -168,6 +168,13 @@ export const bagGusseted: StyleDefinition = {
     // symmetric front-to-back, so the seam is always exactly half the girth
     // away from front-centre. Same -90 as the pillow.
     girthPhaseDeg: -90,
+    // Unlike the pillow (front barely wider than the fin between the two
+    // back halves), front and back here are each a full bagW-wide flat
+    // panel with all the folding concentrated at the four narrow gusset
+    // corners — a rectangular tube, not a smooth oval. Bows the
+    // cross-section toward a rounded rectangle so the flat panels actually
+    // read as flat.
+    cornerSharpness: 3,
     stations: [
       { y: '0', halfDepth: 'max(caliper, bagD*0.06)' },
       { y: 'endSeal', halfDepth: 'max(caliper, bagD*0.06)' },

@@ -424,19 +424,42 @@ function loftedProfile(
    * the body station, growing toward a crimp. */
   const excessHalfWidthAt = (y: number): number => Math.max(0, stationAt(y).halfWidth - bodyHalfWidth) * fill;
 
+  // A plain ellipse (cornerSharpness = 0, the pillow's own default) is right
+  // for a bag with no flat panel to hold — front and back are each barely
+  // wider than the fin between them, so there is no "flat middle" for a
+  // true cross-section to have. A gusseted bag does have one: front and
+  // back are wide flat panels with all the folding concentrated at the
+  // narrow gusset corners, a "rectangular tube" per its own doc comment,
+  // not a smooth oval. Raising cornerSharpness bows a superellipse toward
+  // that: x = halfWidth * sign(cos) * |cos|^p, z analogous, with
+  // p = 2 / (2 + cornerSharpness) — p = 1 (sharpness 0) is the exact
+  // ellipse; p < 1 holds each axis near its own full extent for MOST of the
+  // sweep and only turns it over sharply near the pole, i.e. a flatter
+  // panel and a tighter corner. This reshapes the SILHOUETTE only, after
+  // halfWidth/halfDepth are already solved from the true ellipse's
+  // perimeter — girth conservation stays exact at t = 0 and t = 0.5 (the
+  // axis poles, where a superellipse and its parent ellipse agree exactly)
+  // and is only approximate in between, same spirit as the crimp band's
+  // display-only depth floor.
+  const shapePow = 2 / (2 + (spec.cornerSharpness ?? 0));
+  const shapeXZ = (halfWidth: number, halfDepth: number, angle: number): { x: number; z: number } => {
+    const c = Math.cos(angle);
+    const s = Math.sin(angle);
+    return {
+      x: halfWidth * Math.sign(c) * Math.abs(c) ** shapePow,
+      z: halfDepth * Math.sign(s) * Math.abs(s) ** shapePow,
+    };
+  };
+
   /** The lofted surface point at girth-fraction t and length y, blended by fill. */
   const surfaceAt = (y: number, t: number): { x: number; z: number } => {
     const halfWidth = lerp(flatRef.halfWidth, bodyHalfWidth, fill);
     const halfDepth = lerp(flatRef.halfDepth, stationAt(y).halfDepth, fill);
-    const angle = t * 2 * Math.PI + phase;
-    return { x: halfWidth * Math.cos(angle), z: halfDepth * Math.sin(angle) };
+    return shapeXZ(halfWidth, halfDepth, t * 2 * Math.PI + phase);
   };
 
   /** The FLAT reference cross-section alone, at girth-fraction t — fixed, no y or fill. */
-  const flatAt = (t: number): { x: number; z: number } => {
-    const angle = t * 2 * Math.PI + phase;
-    return { x: flatRef.halfWidth * Math.cos(angle), z: flatRef.halfDepth * Math.sin(angle) };
-  };
+  const flatAt = (t: number): { x: number; z: number } => shapeXZ(flatRef.halfWidth, flatRef.halfDepth, t * 2 * Math.PI + phase);
 
   // Tessellation is driven by curvature, not by how many panels divide the
   // girth. A pillow bag has three round panels; a gusseted bag might have
@@ -783,6 +806,21 @@ function gussetedPouch(
     return { facets: gridToQuads(grid), outline: gridPerimeter(grid) };
   };
 
+  // How far a corner rounds off, in mm — one gusset-depth's worth of
+  // material on either side of the wall/base hinge, which is the natural
+  // scale here: it is exactly the base's own arm length, so applying the
+  // SAME mm distance to the wall keeps the two tapers meeting at the same
+  // absolute distance from their shared edge, not just the same fraction of
+  // two very differently sized spans.
+  const cornerRoundMM = Math.max(1e-6, depth);
+  // 0 at the hinge, 1 a full cornerRoundMM away, eased along a quarter
+  // circle — a steep initial pinch that flattens smoothly into full width,
+  // not a linear taper (a real rounded corner is an arc, not a wedge).
+  const cornerShrink = (distFromHinge: number): number => {
+    const cr = Math.min(1, Math.max(0, distFromHinge) / cornerRoundMM);
+    return Math.sqrt(Math.max(0, 1 - (1 - cr) ** 2));
+  };
+
   for (const face of walls) {
     const rigidPts = rigid.get(face.id)!.points;
     const rb = rigidBounds(face);
@@ -790,12 +828,21 @@ function gussetedPouch(
     // Which edge is nearer the gusset decides which end gets v = 0.
     const gussetAtLowY = Math.abs(rb.min.y - baseCenterY) < Math.abs(rb.max.y - baseCenterY);
     const span = rb.max.y - rb.min.y || 1;
-    // Displaced from the rigid position; x and y stay exactly where the
-    // tested fold already put them, only z (the bulge) moves.
+    const cxRow = (rb.min.x + rb.max.x) / 2;
+    // Displaced from the rigid position; only z (the bulge) and, near the
+    // gusset-adjacent edge, x (rounding the corner in toward centre) move —
+    // the flat pattern's own rectangle is otherwise untouched. A stand-up
+    // pouch's own "fill area" is not the panel's full flat rectangle: the
+    // corners nearest the base are consumed into the gusset seal, which
+    // reads as the panel's own bottom corners rounding off rather than
+    // staying square. It is formed-only, like the bulge itself — the flat
+    // dieline's outer cut is still the plain rectangle it always was.
     const { facets, outline } = sampleFace(face, rigidPts, (rx, ry) => {
       const v = gussetAtLowY ? (ry - rb.min.y) / span : (rb.max.y - ry) / span;
       const bulge = fill * depth * Math.sin(Math.PI * Math.max(0, Math.min(1, v)));
-      return { x: rx, y: ry, z: lerp(0, sign * bulge, fill) };
+      const shrink = cornerShrink(v * span);
+      const roundedX = cxRow + (rx - cxRow) * shrink;
+      return { x: lerp(rx, roundedX, fill), y: ry, z: lerp(0, sign * bulge, fill) };
     });
     out.set(face.id, { face, facets, outline: [outline] });
   }
@@ -834,7 +881,12 @@ function gussetedPouch(
     // rigid length — the arm's LENGTH becomes depth in z, not height in y.
     const { facets, outline } = sampleFace(face, rigidPts, (rx, ry) => {
       const s = Math.abs(ry - hingeY) / armLength; // 0 at the wall hinge, 1 at the fold centre
-      const nx = (rx - cx) / halfW; // -1..1 across the panel width
+      // The SAME corner shrink as the wall, in the same absolute mm from the
+      // shared hinge line, so the base's own opened rim meets the wall's
+      // now-rounded corner at matching width instead of snapping back out
+      // to the base's own full oval width right at the seam.
+      const shrink = cornerShrink(s * armLength);
+      const nx = ((rx - cx) / halfW) * shrink; // -1..1 across the panel width
       return {
         x: lerp(rx, wallCenterX + nx * ovalRadiusX, fill),
         y: lerp(ry, hingeY, fill),
