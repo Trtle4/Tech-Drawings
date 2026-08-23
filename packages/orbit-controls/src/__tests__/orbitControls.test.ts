@@ -2,17 +2,20 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { ORBIT_NUDGE, stepOrbit, tweenOrbit, wrapPi } from '../orbitControls.js';
 
 describe('wrapPi', () => {
-  it('leaves angles already in (-π, π] alone', () => {
+  it('leaves angles already in [-π, π) alone', () => {
     expect(wrapPi(0)).toBeCloseTo(0);
     expect(wrapPi(Math.PI / 2)).toBeCloseTo(Math.PI / 2);
-    expect(wrapPi(Math.PI)).toBeCloseTo(Math.PI);
+    expect(wrapPi(-Math.PI)).toBeCloseTo(-Math.PI); // -π is IN range for this convention
   });
 
-  it('wraps angles outside that range back into it', () => {
+  it('maps +π to -π — RSC\'s own half-open convention, closed at -π not +π', () => {
+    expect(wrapPi(Math.PI)).toBeCloseTo(-Math.PI);
+  });
+
+  it('wraps angles outside [-π, π) back into it', () => {
     expect(wrapPi(2 * Math.PI)).toBeCloseTo(0);
     expect(wrapPi(-2 * Math.PI)).toBeCloseTo(0);
-    expect(wrapPi(3 * Math.PI)).toBeCloseTo(Math.PI);
-    expect(wrapPi(-Math.PI)).toBeCloseTo(Math.PI); // -π and π are the same angle; normalizes to the (-π, π] side
+    expect(wrapPi(3 * Math.PI)).toBeCloseTo(-Math.PI);
   });
 });
 
@@ -28,6 +31,13 @@ describe('stepOrbit', () => {
 
   it('accepts a custom nudge size', () => {
     expect(stepOrbit('right', current, 1)).toEqual({ azimuth: 1.2, elevation: 0.1 });
+  });
+
+  it('clamps elevation to +/-90 deg on up/down — RSC\'s clampRx, present on the arrow step even though free-drag orbit is unclamped', () => {
+    const nearTop = { azimuth: 0, elevation: Math.PI / 2 - 0.05 };
+    expect(stepOrbit('up', nearTop).elevation).toBeCloseTo(Math.PI / 2);
+    const nearBottom = { azimuth: 0, elevation: -Math.PI / 2 + 0.05 };
+    expect(stepOrbit('down', nearBottom).elevation).toBeCloseTo(-Math.PI / 2);
   });
 });
 
@@ -70,6 +80,13 @@ describe('tweenOrbit', () => {
     expect(frames[1]!.azimuth).toBeCloseTo(1);
     expect(frames[1]!.elevation).toBeCloseTo(0.5);
     expect(done).toBe(true);
+  });
+
+  it('eases with RSC\'s own quadratic ease-in-out, not a cubic curve', () => {
+    const frames: { azimuth: number }[] = [];
+    tweenOrbit({ azimuth: 0, elevation: 0 }, { azimuth: 1, elevation: 0 }, 100, (a) => frames.push(a));
+    tick(25); // t=0.25 -> quadratic ease-in: 2*0.25^2 = 0.125
+    expect(frames[0]!.azimuth).toBeCloseTo(0.125);
   });
 
   it('takes the shortest way around the wrap point instead of the long way', () => {

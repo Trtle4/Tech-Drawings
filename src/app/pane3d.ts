@@ -22,7 +22,7 @@ import { computeFormedShape, hasFormedShape, type FormedFace } from '../geometry
 import { cameraBasis, orbitTowards, project, projectFormedFaces, type CameraBasis, type ProjectedFacet, type UpAxis } from '../render/iso.js';
 import { mmToPx, pixelFrame, triangleAffine, type PixelFrame } from '../render/texture.js';
 import { assembleDimension, drawDimensionCanvas, formatLength, type LengthUnit } from '../render/dimension.js';
-import { tweenOrbit, type OrbitAngles } from '../render/orbitControls.js';
+import { tweenOrbit, type OrbitAngles } from '../../packages/orbit-controls/dist/orbitControls.js';
 import { fitToBounds, modelToScreen, pan as panView, zoomAt, type Camera2D, type Viewport } from './camera2d.js';
 import { pointInRing } from './hitTest.js';
 import { DEFAULT_ORBIT, type ArtworkState, type Store } from './state.js';

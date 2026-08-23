@@ -1,6 +1,10 @@
 node_modules/
 out/
 dist/
+# orbit-controls' dist IS the deliverable — the "single-file build" other
+# consumers (including a no-build-step app with no TypeScript of its own)
+# are meant to import directly, so it's committed rather than generated.
+!packages/orbit-controls/dist/
 *.log
 .DS_Store
 render-check/
