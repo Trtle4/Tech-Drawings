@@ -19,15 +19,47 @@
  */
 import type { Vec2, Vec3 } from '../geometry/types.js';
 import { computeFormedShape, hasFormedShape, type FormedFace } from '../geometry/formedShape.js';
-import { cameraBasis, project, projectFormedFaces, type CameraBasis, type ProjectedFacet } from '../render/iso.js';
+import { cameraBasis, orbitTowards, project, projectFormedFaces, type CameraBasis, type ProjectedFacet, type UpAxis } from '../render/iso.js';
 import { mmToPx, pixelFrame, triangleAffine, type PixelFrame } from '../render/texture.js';
 import { assembleDimension, drawDimensionCanvas, formatLength, type LengthUnit } from '../render/dimension.js';
+import { tweenOrbit, type OrbitAngles } from '../render/orbitControls.js';
 import { fitToBounds, modelToScreen, pan as panView, zoomAt, type Camera2D, type Viewport } from './camera2d.js';
+import { pointInRing } from './hitTest.js';
 import { DEFAULT_ORBIT, type ArtworkState, type Store } from './state.js';
 
 const ELEVATION_LIMIT = (89 * Math.PI) / 180;
 const ORBIT_SENSITIVITY = Math.PI / 300; // radians per screen px
 const clampElevation = (e: number) => Math.max(-ELEVATION_LIMIT, Math.min(ELEVATION_LIMIT, e));
+
+/**
+ * The navigation cube's 6 faces, each a unit half-size quad in local cube
+ * space with an outward normal — a deliberately smaller cut of RSC's own
+ * 26-region (6 face + 12 edge + 8 corner) ViewCube, see `paintViewCube`.
+ * Corner order matters (must trace the face's own boundary, not a
+ * diagonal), winding does not (nothing here culls by winding — visibility
+ * comes from `dot(normal, cam.forward)`, hit-testing from `pointInRing`,
+ * neither of which cares which way a polygon winds).
+ */
+const CUBE_FACES: { normal: Vec3; corners: Vec3[] }[] = [
+  { normal: { x: 1, y: 0, z: 0 }, corners: [{ x: 1, y: -1, z: -1 }, { x: 1, y: 1, z: -1 }, { x: 1, y: 1, z: 1 }, { x: 1, y: -1, z: 1 }] },
+  { normal: { x: -1, y: 0, z: 0 }, corners: [{ x: -1, y: -1, z: 1 }, { x: -1, y: 1, z: 1 }, { x: -1, y: 1, z: -1 }, { x: -1, y: -1, z: -1 }] },
+  { normal: { x: 0, y: 1, z: 0 }, corners: [{ x: -1, y: 1, z: -1 }, { x: -1, y: 1, z: 1 }, { x: 1, y: 1, z: 1 }, { x: 1, y: 1, z: -1 }] },
+  { normal: { x: 0, y: -1, z: 0 }, corners: [{ x: -1, y: -1, z: 1 }, { x: -1, y: -1, z: -1 }, { x: 1, y: -1, z: -1 }, { x: 1, y: -1, z: 1 }] },
+  { normal: { x: 0, y: 0, z: 1 }, corners: [{ x: -1, y: -1, z: 1 }, { x: 1, y: -1, z: 1 }, { x: 1, y: 1, z: 1 }, { x: -1, y: 1, z: 1 }] },
+  { normal: { x: 0, y: 0, z: -1 }, corners: [{ x: 1, y: -1, z: -1 }, { x: -1, y: -1, z: -1 }, { x: -1, y: 1, z: -1 }, { x: 1, y: 1, z: -1 }] },
+];
+const CUBE_SCALE_PX = 20;
+const CUBE_MARGIN_PX = 38;
+const CUBE_MIN_VIEWPORT_PX = 90;
+const CUBE_TWEEN_MS = 400;
+
+/** "TOP"/"BOTTOM" for the style's own up axis, "X+"/"Y−"/etc for the other two — there's no "front" convention in this app's geometry model (only `upAxis`), so the other four faces get an honest signed-axis label instead of an invented one. */
+function cubeFaceLabel(normal: Vec3, upAxis: UpAxis): string {
+  const axis: 'x' | 'y' | 'z' = normal.x !== 0 ? 'x' : normal.y !== 0 ? 'y' : 'z';
+  const positive = normal[axis] > 0;
+  if (axis === upAxis) return positive ? 'TOP' : 'BOTTOM';
+  return `${axis.toUpperCase()}${positive ? '+' : '−'}`;
+}
 
 export interface Pane3DController {
   destroy(): void;
@@ -55,6 +87,75 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
   function viewport(): Viewport {
     const r = canvas.getBoundingClientRect();
     return { width: r.width || 1, height: r.height || 1 };
+  }
+
+  // Recomputed by `paintViewCube` every render, read by the pointer handlers
+  // below for hit-testing — a click's screen point only needs testing
+  // against whichever faces were actually visible (and drawn) last frame.
+  let cubeHitRegions: { label: string; dir: Vec3; poly: Vec2[] }[] = [];
+  let hoveredCubeLabel: string | null = null;
+
+  /**
+   * A small always-visible navigation cube, fixed in the pane's top-right
+   * corner independent of the model's own pan/zoom — click a face to snap
+   * the orbit to look straight at it. Ported from RSC's `viewcube.js`
+   * (there, a genuine three.js mini-scene with 26 raycast-hit regions —
+   * 6 faces, 12 edges, 8 corners); this is a deliberately smaller cut: 6
+   * face regions only, drawn with the exact same `project`/`modelToScreen`
+   * pipeline already used for the main model (retargeted to a fixed
+   * screen anchor via a synthetic zero-origin `Camera2D`/`Viewport`, so it
+   * shares the proven sign convention instead of risking a fresh one) and
+   * hit-tested with the same point-in-polygon test the 2D canvas already
+   * uses for face selection (`pointInRing`).
+   */
+  function paintViewCube(cam: CameraBasis, vpNow: Viewport, upAxis: UpAxis): { label: string; dir: Vec3; poly: Vec2[] }[] {
+    if (vpNow.width < CUBE_MIN_VIEWPORT_PX || vpNow.height < CUBE_MIN_VIEWPORT_PX) return [];
+    const anchor = { x: vpNow.width - CUBE_MARGIN_PX, y: CUBE_MARGIN_PX };
+    const toScreen = (p: Vec3): Vec2 =>
+      modelToScreen(project(p, cam), { cx: 0, cy: 0, zoom: CUBE_SCALE_PX }, { width: anchor.x * 2, height: anchor.y * 2 });
+
+    const dot3 = (a: Vec3, b: Vec3) => a.x * b.x + a.y * b.y + a.z * b.z;
+    const visible = CUBE_FACES.map((f) => ({ ...f, forwardDot: dot3(f.normal, cam.forward) }))
+      .filter((f) => f.forwardDot > 0.001)
+      .sort((a, b) => a.forwardDot - b.forwardDot); // most face-on drawn last, on top
+
+    const faceColor = themeColor('--panel', '#eef1f4');
+    const edgeColor = themeColor('--line-2', '#c7ccd3');
+    const textColor = themeColor('--ink-2', '#5a6472');
+    const hoverColor = themeColor('--accent-soft', '#d7ecee');
+
+    const regions: { label: string; dir: Vec3; poly: Vec2[] }[] = [];
+    for (const f of visible) {
+      const poly = f.corners.map(toScreen);
+      const faceLabel = cubeFaceLabel(f.normal, upAxis);
+      regions.push({ label: faceLabel, dir: f.normal, poly });
+
+      ctx.beginPath();
+      ctx.moveTo(poly[0]!.x, poly[0]!.y);
+      for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i]!.x, poly[i]!.y);
+      ctx.closePath();
+      ctx.fillStyle = faceLabel === hoveredCubeLabel ? hoverColor : faceColor;
+      ctx.fill();
+      ctx.strokeStyle = edgeColor;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      const cx = poly.reduce((s, p) => s + p.x, 0) / poly.length;
+      const cy = poly.reduce((s, p) => s + p.y, 0) / poly.length;
+      ctx.fillStyle = textColor;
+      ctx.font = '600 8px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(faceLabel, cx, cy);
+    }
+    return regions;
+  }
+
+  function hitCubeFace(p: Vec2): { label: string; dir: Vec3; poly: Vec2[] } | null {
+    for (const region of cubeHitRegions) {
+      if (pointInRing(p, region.poly)) return region;
+    }
+    return null;
   }
 
   /**
@@ -134,13 +235,35 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
     return Number.isFinite(minX) ? { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } } : null;
   }
 
-  /** Reset orbit to the default iso angle and frame the model at that angle. */
-  function resetToIso(): void {
+  /** Jump straight to the default iso angle and frame the model there — no animation. Used when a style switch makes the previous orbit/pan meaningless, where animating FROM a stale orientation would read as a glitch, not a transition. */
+  function snapToIso(): void {
     const { azimuth, elevation } = DEFAULT_ORBIT;
     const { faces } = projectFaces(azimuth, elevation);
     const bounds = projectedBounds(faces);
     const view = bounds ? fitToBounds(bounds, viewport()) : { cx: 0, cy: 0, zoom: 1 };
     store.setCamera3D({ azimuth, elevation, view });
+  }
+
+  let cancelActiveTween: (() => void) | null = null;
+  function cancelTween(): void {
+    cancelActiveTween?.();
+    cancelActiveTween = null;
+  }
+
+  /** Reset button: eases the rotation back to iso (RSC's Home-button behaviour, ported via `tweenOrbit`), then snaps pan/zoom to frame it once the rotation settles — refitting mid-rotation would mean the target bounds keep changing under the animation. */
+  function resetToIso(): void {
+    cancelTween();
+    const from = store.getState().camera3d;
+    cancelActiveTween = tweenOrbit(
+      { azimuth: from.azimuth, elevation: from.elevation },
+      DEFAULT_ORBIT,
+      CUBE_TWEEN_MS,
+      (a) => store.setCamera3D({ ...store.getState().camera3d, azimuth: a.azimuth, elevation: a.elevation }),
+      () => {
+        cancelActiveTween = null;
+        snapToIso();
+      },
+    );
   }
 
   let cssVars: CSSStyleDeclaration | null = null;
@@ -268,9 +391,10 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
   }
 
   function render(): void {
+    cubeHitRegions = [];
     const state = store.getState();
     const { azimuth, elevation, view } = state.camera3d;
-    const { faces: ordered, formed, cam, worldBounds } = projectFaces(azimuth, elevation);
+    const { faces: ordered, formed, cam, worldBounds, upAxis } = projectFaces(azimuth, elevation);
     label.textContent = `${formed ? 'Formed pack' : 'Folded'} · orbit`;
     bgBtn.classList.toggle('on', state.bg3d === 'white');
     dimsBtn.classList.toggle('on', state.dims3d);
@@ -341,43 +465,147 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
       const dimsBounds = state.outsideDims3d ? expandOutside(worldBounds, caliper) : worldBounds;
       paintDimensions3D(dimsBounds, cam, view, vp, themeColor('--l-dimension', '#0f6e77'), state.unit);
     }
+
+    cubeHitRegions = paintViewCube(cam, vp, upAxis ?? 'y');
   }
 
-  // -- interaction: left-drag orbits, shift+left-drag or middle-drag pans, wheel zooms --
+  // -- interaction: left-drag orbits, shift+left-drag or middle-drag pans,
+  // wheel zooms, a view-cube click snaps to a face. One-finger touch orbits,
+  // two-finger touch pans (by centroid) and pinch-zooms (by spread ratio) —
+  // ported from RSC's `fold3d.js` pointer handling, which tracks every
+  // active pointer in a `Map` rather than assuming a single mouse; mouse
+  // interaction itself is unchanged from before.
 
   type Drag = { kind: 'orbit'; last: Vec2 } | { kind: 'pan'; last: Vec2 };
   let drag: Drag | null = null;
 
+  // pointerId -> last screen position, touch pointers only.
+  const touchPoints = new Map<number, Vec2>();
+  let pinchDist = 0;
+  let pinchCentroid: Vec2 | null = null;
+
+  function applyOrbitDelta(dx: number, dy: number): void {
+    const cam3 = store.getState().camera3d;
+    store.setCamera3D({
+      ...cam3,
+      azimuth: cam3.azimuth + dx * ORBIT_SENSITIVITY,
+      elevation: clampElevation(cam3.elevation - dy * ORBIT_SENSITIVITY),
+    });
+  }
+
+  function applyPanDelta(dx: number, dy: number): void {
+    const cam3 = store.getState().camera3d;
+    store.setCamera3D({ ...cam3, view: panView(cam3.view, dx, dy) });
+  }
+
+  function touchCentroid(): Vec2 {
+    let x = 0;
+    let y = 0;
+    for (const p of touchPoints.values()) {
+      x += p.x;
+      y += p.y;
+    }
+    const n = touchPoints.size || 1;
+    return { x: x / n, y: y / n };
+  }
+
+  function touchSpread(): number {
+    const pts = [...touchPoints.values()];
+    return pts.length < 2 ? 0 : Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y);
+  }
+
   canvas.addEventListener('pointerdown', (ev) => {
-    if (ev.button !== 0 && ev.button !== 1) return;
     const r = canvas.getBoundingClientRect();
-    const last = { x: ev.clientX - r.left, y: ev.clientY - r.top };
-    drag = ev.button === 1 || ev.shiftKey ? { kind: 'pan', last } : { kind: 'orbit', last };
+    const now = { x: ev.clientX - r.left, y: ev.clientY - r.top };
+
+    const hit = hitCubeFace(now);
+    if (hit) {
+      cancelTween();
+      const cam3 = store.getState().camera3d;
+      const upAxis = store.getDerived().graph.upAxis;
+      const target = orbitTowards(hit.dir, upAxis);
+      cancelActiveTween = tweenOrbit(
+        { azimuth: cam3.azimuth, elevation: cam3.elevation },
+        { azimuth: target.azimuth, elevation: clampElevation(target.elevation) },
+        CUBE_TWEEN_MS,
+        (a: OrbitAngles) => store.setCamera3D({ ...store.getState().camera3d, azimuth: a.azimuth, elevation: a.elevation }),
+        () => {
+          cancelActiveTween = null;
+        },
+      );
+      return;
+    }
+
+    if (ev.pointerType === 'touch') {
+      cancelTween();
+      canvas.setPointerCapture(ev.pointerId);
+      touchPoints.set(ev.pointerId, now);
+      if (touchPoints.size >= 2) {
+        pinchDist = touchSpread();
+        pinchCentroid = touchCentroid();
+      }
+      return;
+    }
+
+    if (ev.button !== 0 && ev.button !== 1) return;
+    cancelTween();
+    drag = ev.button === 1 || ev.shiftKey ? { kind: 'pan', last: now } : { kind: 'orbit', last: now };
     canvas.setPointerCapture(ev.pointerId);
     canvas.classList.add(drag.kind === 'pan' ? 'panning' : 'orbiting');
   });
 
   canvas.addEventListener('pointermove', (ev) => {
-    if (!drag) return;
     const r = canvas.getBoundingClientRect();
     const now = { x: ev.clientX - r.left, y: ev.clientY - r.top };
-    const dx = now.x - drag.last.x;
-    const dy = now.y - drag.last.y;
-    drag.last = now;
-    const cam3 = store.getState().camera3d;
 
-    if (drag.kind === 'pan') {
-      store.setCamera3D({ ...cam3, view: panView(cam3.view, dx, dy) });
-    } else {
-      store.setCamera3D({
-        ...cam3,
-        azimuth: cam3.azimuth + dx * ORBIT_SENSITIVITY,
-        elevation: clampElevation(cam3.elevation - dy * ORBIT_SENSITIVITY),
-      });
+    if (ev.pointerType === 'touch' && touchPoints.has(ev.pointerId)) {
+      const prev = touchPoints.get(ev.pointerId)!;
+      touchPoints.set(ev.pointerId, now);
+      if (touchPoints.size >= 2) {
+        const centroid = touchCentroid();
+        if (pinchCentroid) applyPanDelta(centroid.x - pinchCentroid.x, centroid.y - pinchCentroid.y);
+        pinchCentroid = centroid;
+        const spread = touchSpread();
+        if (pinchDist > 0 && spread > 0) {
+          const cam3 = store.getState().camera3d;
+          store.setCamera3D({ ...cam3, view: zoomAt(cam3.view, viewport(), centroid, spread / pinchDist) });
+        }
+        pinchDist = spread;
+      } else {
+        applyOrbitDelta(now.x - prev.x, now.y - prev.y);
+      }
+      return;
+    }
+
+    if (drag) {
+      const dx = now.x - drag.last.x;
+      const dy = now.y - drag.last.y;
+      drag.last = now;
+      if (drag.kind === 'pan') applyPanDelta(dx, dy);
+      else applyOrbitDelta(dx, dy);
+      return;
+    }
+
+    // Idle: just track view-cube hover, for its highlight.
+    const hovered = hitCubeFace(now)?.label ?? null;
+    if (hovered !== hoveredCubeLabel) {
+      hoveredCubeLabel = hovered;
+      canvas.style.cursor = hovered ? 'pointer' : '';
+      render();
     }
   });
 
   function endDrag(ev: PointerEvent): void {
+    if (ev.pointerType === 'touch') {
+      touchPoints.delete(ev.pointerId);
+      canvas.releasePointerCapture(ev.pointerId);
+      if (touchPoints.size < 2) {
+        pinchDist = 0;
+        pinchCentroid = null;
+      }
+      if (touchPoints.size === 0) canvas.classList.remove('panning', 'orbiting');
+      return;
+    }
     if (!drag) return;
     canvas.releasePointerCapture(ev.pointerId);
     canvas.classList.remove('panning', 'orbiting');
@@ -385,11 +613,13 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
   }
   canvas.addEventListener('pointerup', endDrag);
   canvas.addEventListener('pointerleave', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
 
   canvas.addEventListener(
     'wheel',
     (ev) => {
       ev.preventDefault();
+      cancelTween();
       const r = canvas.getBoundingClientRect();
       const screenPoint = { x: ev.clientX - r.left, y: ev.clientY - r.top };
       const factor = Math.exp(-ev.deltaY * 0.0015);
@@ -416,7 +646,8 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
     const styleId = store.getState().styleId;
     if (styleId !== lastStyleId) {
       lastStyleId = styleId;
-      resetToIso();
+      cancelTween();
+      snapToIso();
     } else {
       render();
     }

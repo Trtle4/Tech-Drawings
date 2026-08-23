@@ -45,6 +45,17 @@ const norm = (a: Vec3): Vec3 => {
   return scale(a, 1 / l);
 };
 
+/** The horizontal-plane basis (h1, h2) perpendicular to a given up axis — shared by `cameraBasis` and `orbitTowards`, which is exactly `cameraBasis` run in reverse. */
+function horizontalBasis(upAxis: UpAxis): { U: Vec3; h1: Vec3; h2: Vec3 } {
+  const U = AXIS[upAxis];
+  // A reference vector not parallel to U, to seed the horizontal plane basis.
+  // (0,0,1) works unless U itself is Z, in which case fall back to (1,0,0).
+  const ref: Vec3 = Math.abs(dot(U, AXIS.z)) > 0.9 ? AXIS.x : AXIS.z;
+  const h1 = norm(sub(ref, scale(U, dot(ref, U))));
+  const h2 = cross(U, h1);
+  return { U, h1, h2 };
+}
+
 /**
  * Camera basis for a given up axis, azimuth and elevation.
  *
@@ -60,12 +71,7 @@ export function cameraBasis(
   azimuth = (30 * Math.PI) / 180,
   elevation = (18 * Math.PI) / 180,
 ): CameraBasis {
-  const U = AXIS[upAxis];
-  // A reference vector not parallel to U, to seed the horizontal plane basis.
-  // (0,0,1) works unless U itself is Z, in which case fall back to (1,0,0).
-  const ref: Vec3 = Math.abs(dot(U, AXIS.z)) > 0.9 ? AXIS.x : AXIS.z;
-  const h1 = norm(sub(ref, scale(U, dot(ref, U))));
-  const h2 = cross(U, h1);
+  const { U, h1, h2 } = horizontalBasis(upAxis);
 
   const horiz = add(scale(h1, Math.cos(azimuth)), scale(h2, Math.sin(azimuth)));
   const forward = add(scale(horiz, Math.cos(elevation)), scale(U, Math.sin(elevation)));
@@ -73,6 +79,24 @@ export function cameraBasis(
   const up = add(scale(horiz, -Math.sin(elevation)), scale(U, Math.cos(elevation)));
 
   return { right: norm(right), up: norm(up), forward: norm(forward) };
+}
+
+/**
+ * The azimuth/elevation that makes `cameraBasis(upAxis, azimuth, elevation)`'s
+ * `forward` point toward `dir` — the exact inverse of `cameraBasis`, reusing
+ * its same up-axis basis so the two stay consistent for every `upAxis`. This
+ * is what turns a clicked view-cube face's outward normal into an orbit
+ * target: RSC's `viewcube.js` solves the same inversion for its fixed Y-up
+ * three.js camera (`rx = asin(dy/mag), ry = atan2(dx, dz)`); this version
+ * generalizes that to an arbitrary up axis by projecting `dir` onto the same
+ * `(U, h1, h2)` basis `cameraBasis` itself is built from.
+ */
+export function orbitTowards(dir: Vec3, upAxis: UpAxis = 'y'): { azimuth: number; elevation: number } {
+  const { U, h1, h2 } = horizontalBasis(upAxis);
+  const d = norm(dir);
+  const elevation = Math.asin(Math.max(-1, Math.min(1, dot(d, U))));
+  const azimuth = Math.atan2(dot(d, h2), dot(d, h1));
+  return { azimuth, elevation };
 }
 
 export interface Projected2D {

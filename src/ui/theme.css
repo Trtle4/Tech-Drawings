@@ -862,6 +862,11 @@ main {
 
 #pane-3d .pane-canvas {
   cursor: grab;
+  /* Orbit/pan/pinch-zoom are handled entirely by this pane's own pointer
+     events (see pane3d.ts) — without this, a touch drag also triggers the
+     browser's native page scroll/pinch-zoom at the same time, and the two
+     fight over the same gesture. */
+  touch-action: none;
 }
 
 .handle-pt {
