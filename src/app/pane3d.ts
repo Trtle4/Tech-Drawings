@@ -162,7 +162,7 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
    * The world-space (mm) axis-aligned bounding box of every point in the
    * formed/folded shape — the raw modeled envelope, at the panel geometry's
    * own mid-plane (nothing here models material thickness; see
-   * `expandOutside` for the true outside envelope the "Outside" toggle
+   * `outsideBounds` for the true outside envelope the "Outside" toggle
    * shows instead).
    */
   function worldBoundsOf(formed: Map<string, FormedFace>): { min: Vec3; max: Vec3 } | null {
@@ -187,27 +187,80 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
     return Number.isFinite(minX) ? { min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ } } : null;
   }
 
+  const AXES: ('x' | 'y' | 'z')[] = ['x', 'y', 'z'];
+
   /**
-   * Pads a raw (mid-plane) bounding box out to the assembled pack's true
-   * outside envelope: one wall thickness (`graph.caliper`) added past each
-   * of the box's six faces, so every axis grows by `2 * caliper` — the
-   * standard inside-to-outside relationship for single-ply walls. `ply`
-   * itself carries no spatial offset anywhere in this codebase (it is
-   * paint-order metadata only, see `iso.ts`'s `paintOrder`), so this is
-   * deliberately a single global caliper padding, not a per-ply sum.
+   * How many distinct plies of board actually COVER a given axis extreme —
+   * every formed face whose facet lies flush against that boundary plane,
+   * counted by its DISTINCT `face.ply` values (not summed, not just "1").
+   * A side wall of an RSC case is a single panel at one ply, so it counts
+   * as 1. The top and bottom are a minor flap (ply 0) AND a major flap
+   * (ply 1) both lying flush against that same boundary, so they count as
+   * 2 — that second ply is exactly the case flagged: "internal plus two
+   * caliper is wrong anywhere flaps overlap, which on an 0201 is most of
+   * the top and bottom." Ply IS spatially meaningful for this purpose even
+   * though it drives no point position anywhere else in this codebase
+   * (see `iso.ts`'s `paintOrder`) — it is the style's own explicit
+   * statement of physical stacking order, exactly what "how many layers of
+   * board sit here" needs.
+   *
+   * Tests the facet's CENTROID against the boundary, not any single point.
+   * A flap is exactly as wide as the wall it hinges from, so once folded
+   * flat its far corner can land ON an adjacent boundary plane (the flap's
+   * own edge reaching the box's other axis extreme) without the flap
+   * actually covering that adjacent face at all — a corner brushing a
+   * plane is not the same as lying flush against it. The centroid only
+   * lands on a boundary when the facet's own BULK sits there, which is
+   * what should count.
    */
-  function expandOutside(b: { min: Vec3; max: Vec3 }, caliper: number): { min: Vec3; max: Vec3 } {
-    return {
-      min: { x: b.min.x - caliper, y: b.min.y - caliper, z: b.min.z - caliper },
-      max: { x: b.max.x + caliper, y: b.max.y + caliper, z: b.max.z + caliper },
-    };
+  function plyCountAtBoundary(formed: Map<string, FormedFace>, axis: 'x' | 'y' | 'z', bound: number, tolerance: number): number {
+    const plies = new Set<number>();
+    for (const { face, facets } of formed.values()) {
+      for (const facet of facets) {
+        if (facet.points.length === 0) continue;
+        let sum = 0;
+        for (const p of facet.points) sum += p[axis];
+        const centroid = sum / facet.points.length;
+        if (Math.abs(centroid - bound) <= tolerance) {
+          plies.add(face.ply);
+          break;
+        }
+      }
+    }
+    return Math.max(1, plies.size);
+  }
+
+  /**
+   * Pads the raw (mid-plane) bounding box out to the assembled pack's true
+   * outside envelope, one `graph.caliper` per ply actually stacked at each
+   * of the box's six faces — see `plyCountAtBoundary`. A uniform "+1 wall
+   * thickness on every side" (what this used to do) is only correct where
+   * every boundary happens to be a single panel; it undercounts anywhere
+   * flaps overlap.
+   */
+  function outsideBounds(b: { min: Vec3; max: Vec3 }, formed: Map<string, FormedFace>, caliper: number): { min: Vec3; max: Vec3 } {
+    const tolerance = Math.max(1e-6, caliper * 0.1);
+    const min = { ...b.min };
+    const max = { ...b.max };
+    for (const axis of AXES) {
+      min[axis] -= plyCountAtBoundary(formed, axis, b.min[axis], tolerance) * caliper;
+      max[axis] += plyCountAtBoundary(formed, axis, b.max[axis], tolerance) * caliper;
+    }
+    return { min, max };
   }
 
   /** Project the current derived geometry at a given orbit orientation — pure, no DOM writes. */
   function projectFaces(
     azimuth: number,
     elevation: number,
-  ): { faces: ProjectedFacet[]; upAxis: 'x' | 'y' | 'z' | undefined; formed: boolean; cam: CameraBasis; worldBounds: { min: Vec3; max: Vec3 } | null } {
+  ): {
+    faces: ProjectedFacet[];
+    upAxis: 'x' | 'y' | 'z' | undefined;
+    formed: boolean;
+    cam: CameraBasis;
+    worldBounds: { min: Vec3; max: Vec3 } | null;
+    formedShape: Map<string, FormedFace>;
+  } {
     const derived = store.getDerived();
     const graph = derived.graph;
     const resolved = derived.resolved;
@@ -216,7 +269,7 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
     // computeFormedShape falls back to the rigid fold itself when the style
     // has no formedShape, so this is the one path for both cases.
     const folded = computeFormedShape(graph, resolved);
-    return { faces: projectFormedFaces(folded, cam), upAxis: graph.upAxis, formed, cam, worldBounds: worldBoundsOf(folded) };
+    return { faces: projectFormedFaces(folded, cam), upAxis: graph.upAxis, formed, cam, worldBounds: worldBoundsOf(folded), formedShape: folded };
   }
 
   function projectedBounds(faces: ProjectedFacet[]): { min: Vec2; max: Vec2 } | null {
@@ -394,7 +447,7 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
     cubeHitRegions = [];
     const state = store.getState();
     const { azimuth, elevation, view } = state.camera3d;
-    const { faces: ordered, formed, cam, worldBounds, upAxis } = projectFaces(azimuth, elevation);
+    const { faces: ordered, formed, cam, worldBounds, upAxis, formedShape } = projectFaces(azimuth, elevation);
     label.textContent = `${formed ? 'Formed pack' : 'Folded'} · orbit`;
     bgBtn.classList.toggle('on', state.bg3d === 'white');
     dimsBtn.classList.toggle('on', state.dims3d);
@@ -462,7 +515,7 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
 
     if (state.dims3d && worldBounds) {
       const caliper = store.getDerived().graph.caliper;
-      const dimsBounds = state.outsideDims3d ? expandOutside(worldBounds, caliper) : worldBounds;
+      const dimsBounds = state.outsideDims3d ? outsideBounds(worldBounds, formedShape, caliper) : worldBounds;
       paintDimensions3D(dimsBounds, cam, view, vp, themeColor('--l-dimension', '#0f6e77'), state.unit);
     }
 
