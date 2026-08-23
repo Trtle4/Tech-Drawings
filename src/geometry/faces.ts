@@ -87,9 +87,29 @@ export function detectFaces(
       });
       continue;
     }
-    if (pointInSegmentSoup(p, cutSegs)) materialCycles.push(c);
+    let isMaterial = pointInSegmentSoup(p, cutSegs);
     // Even crossing count means air: outside the blank, or inside a cut hole.
-    // Either way it is not a face, and no warning is warranted.
+    // Either way it is not normally a face, and no warning is warranted —
+    // EXCEPT `interiorPoint` tries the ring's own centroid first, and for
+    // any convex (or mostly convex) ring that IS the sample point. A hole
+    // centered exactly on its own face's centroid (an entirely ordinary
+    // thing to do — "put the hang-hole in the middle of the panel") puts
+    // that one sample point inside the hole it owns, which reads as "this
+    // whole face is air" even though the face obviously still exists all
+    // around that hole. Retry from a few points nudged from the centroid
+    // toward each vertex before concluding the region really isn't
+    // material — cheap, since it only runs on this otherwise-rare failure.
+    if (!isMaterial) {
+      const centroid = centroidOf(c.ring.points);
+      for (const v of c.ring.points) {
+        const q = { x: centroid.x + (v.x - centroid.x) * 0.25, y: centroid.y + (v.y - centroid.y) * 0.25 };
+        if (pointInRing(q, c.ring.points) && pointInSegmentSoup(q, cutSegs)) {
+          isMaterial = true;
+          break;
+        }
+      }
+    }
+    if (isMaterial) materialCycles.push(c);
   }
 
   // 3. Build faces, smallest first so hole assignment picks the tightest owner.
