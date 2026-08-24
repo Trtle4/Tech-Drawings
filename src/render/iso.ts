@@ -212,6 +212,30 @@ function projectRing(points: Vec3[], uv: Vec2[], cam: CameraBasis): { pts: Vec2[
  * Per-segment depth keeps that sort as local as the fill facets already
  * get.
  */
+/**
+ * Every hole loop of every formed face, projected through the camera into
+ * the same screen-space camera coordinates as `ProjectedFacet.pts` — ready
+ * for the caller to convert to pixels and punch with `destination-out`.
+ *
+ * Deliberately NOT depth-sorted or tested against the facets that occlude
+ * it: a hole on the far side of a curved, self-occluding surface (the back
+ * of a formed tube, say) still punches straight through the near side in
+ * this v1. That is only wrong for a hole placed on a face that is hidden
+ * from the current camera angle, and holes are normally placed on a face
+ * meant to be seen — accepted as a v1 limitation rather than plumbing a
+ * full per-hole visibility test through the facet-paint loop.
+ */
+export function projectFormedHoles(formed: Map<string, FormedFace>, cam: CameraBasis): Vec2[][] {
+  const out: Vec2[][] = [];
+  for (const { holes } of formed.values()) {
+    for (const loop of holes) {
+      if (loop.length < 3) continue;
+      out.push(loop.map((p) => project(p, cam)));
+    }
+  }
+  return out;
+}
+
 export function projectFormedFaces(formed: Map<string, FormedFace>, cam: CameraBasis): ProjectedFacet[] {
   const out: ProjectedFacet[] = [];
   for (const { face, facets, outline } of formed.values()) {

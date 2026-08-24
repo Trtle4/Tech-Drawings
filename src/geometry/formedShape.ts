@@ -57,6 +57,20 @@ export interface FormedFace {
    * panel's main envelope).
    */
   outline: Vec3[][];
+  /**
+   * World-space hole rings cut into this face — a peg hole or a bite-shaped
+   * tear notch (see geometry/features.ts), carried through the same
+   * per-engine point mapping as `facets`/`outline` so a feature lands in
+   * the right place on the formed pack. Empty for the overwhelming
+   * majority of faces, which have no holes. Punched by the renderer as a
+   * separate compositing pass (see pane3d.ts), not subtracted from the
+   * tessellated `facets` mesh itself — correct for a hole on a face the
+   * camera can actually see, not for one on the far side of a curved
+   * surface hidden behind nearer geometry, which is an acceptable v1 gap
+   * given how a peg hole or tear notch is used in practice (on a face
+   * meant to be seen).
+   */
+  holes: Vec3[][];
 }
 
 /**
@@ -152,8 +166,8 @@ function applyUVFlip(out: Map<string, FormedFace>, flips: Record<string, 'u' | '
 
 function rigidFallback(resolved: ResolvedGeometry): Map<string, FormedFace> {
   const out = new Map<string, FormedFace>();
-  for (const [id, { face, points }] of foldedFacePoints(resolved, 1)) {
-    out.set(id, { face, facets: [{ points, uv: face.outer.points }], outline: [points] });
+  for (const [id, { face, points, holes }] of foldedFacePoints(resolved, 1)) {
+    out.set(id, { face, facets: [{ points, uv: face.outer.points }], outline: [points], holes });
   }
   return out;
 }
@@ -234,7 +248,17 @@ function tube(
         uv.push(...rowUv.reverse());
       }
     }
-    out.set(face.id, { face, facets: [{ points, uv }], outline: [points] });
+    // Every hole point maps through the exact same flat-x -> girth-angle
+    // formula the facet points just above it used — a hole is just more
+    // (x, y) belonging to this face, not a separate mesh.
+    const holes = face.holes.map((hole) =>
+      hole.points.map((p) => {
+        const t = (off + (p.x - sp.x0)) / girth;
+        const angle = t * 2 * Math.PI;
+        return { x: a * Math.cos(angle), y: p.y, z: b * Math.sin(angle) };
+      }),
+    );
+    out.set(face.id, { face, facets: [{ points, uv }], outline: [points], holes });
   }
 
   return out;
@@ -494,7 +518,8 @@ function loftedProfile(
   // never the rigid fold, even as a fallback.
   for (const face of resolved.faces) {
     const flatPoints = face.outer.points.map((p) => ({ x: p.x, y: p.y, z: 0 }));
-    out.set(face.id, { face, facets: [{ points: flatPoints, uv: face.outer.points }], outline: [flatPoints] });
+    const flatHoles = face.holes.map((hole) => hole.points.map((p) => ({ x: p.x, y: p.y, z: 0 })));
+    out.set(face.id, { face, facets: [{ points: flatPoints, uv: face.outer.points }], outline: [flatPoints], holes: flatHoles });
   }
   if (roundFaces.length === 0 || (spec.stations ?? []).length < 2) return out;
 
@@ -796,7 +821,19 @@ function loftedProfile(
       }
     }
 
-    out.set(face.id, { face, facets, outline });
+    // Every hole point maps through the exact same surfaceAt/angleOfFace/
+    // worldYOf sampling the round grid just above it used — a hole is more
+    // (x, y) belonging to this face, not a separate mesh. Dog-ear folding
+    // is deliberately not replayed for a hole point (a peg hole landing
+    // exactly in a dog-ear's own fold is not a case worth the extra
+    // complexity here).
+    const holes = face.holes.map((hole) =>
+      hole.points.map((p) => {
+        const s = surfaceAt(worldYOf(p.y), angleOfFace(face.role, bnd, p.x));
+        return { x: s.x, y: worldYOf(p.y), z: s.z + depthOffset };
+      }),
+    );
+    out.set(face.id, { face, facets, outline, holes });
   }
 
   // Faces that do not lie on the lofted surface at all, but open into a
@@ -856,7 +893,19 @@ function loftedProfile(
       }
       grid.push(row);
     }
-    out.set(face.id, { face, facets: gridToQuads(grid), outline: [gridPerimeter(grid)] });
+    // Same nx → t → surfaceAt(weldY, t) mapping as the grid above, applied
+    // to hole points instead of grid points — a peg hole on a pouch floor
+    // welds to the wall's rim exactly like the floor's own outline does.
+    const holes = face.holes.map((hole) =>
+      hole.points.map((p) => {
+        const nx = (p.x - cx) / halfW;
+        const t = t0 + ((nx + 1) / 2) * (t1 - t0);
+        const s = Math.abs(p.y - hingeY) / armLength;
+        const rim = surfaceAt(weldY, t);
+        return { x: rim.x, y: worldWeldY, z: rim.z * (1 - s) };
+      }),
+    );
+    out.set(face.id, { face, facets: gridToQuads(grid), outline: [gridPerimeter(grid)], holes });
   }
 
   const sealStyle = spec.sealStyle ?? 'fin';
@@ -879,21 +928,19 @@ function loftedProfile(
     const seamT = spec.flapAttachT?.[face.role] ?? Math.round(angleOf(attachX));
     const worldYOf = (flatY: number) => worldYOfFace(face.role, bnd, flatY);
 
-    let grid: { p: Vec3; uv: Vec2 }[][];
+    // Captured once, used both for the grid below and for any hole on this
+    // face — a hole point is placed by the exact same per-point rule as
+    // every facet vertex, whichever branch (lap or straight) applies here.
+    let pointAt: (x: number, y: number) => { x: number; z: number };
     if (sealStyle === 'lap') {
       // Not a separate flap — the same lofted surface, sampled past the
       // seam, offset out by the extra ply's thickness along the local
       // radial direction.
-      grid = sampleGrid(
-        bnd,
-        (x, y) => {
-          const p = surfaceAt(y, angleOf(x));
-          const n = normalize2(p.x, p.z);
-          return { x: p.x + n.x * thickness, z: p.z + n.z * thickness };
-        },
-        undefined,
-        worldYOf,
-      );
+      pointAt = (x, y) => {
+        const p = surfaceAt(y, angleOf(x));
+        const n = normalize2(p.x, p.z);
+        return { x: p.x + n.x * thickness, z: p.z + n.z * thickness };
+      };
     } else {
       // A straight flap, folded flat against the surface at the seam: a
       // fixed offset out from the seam point, running its own true width
@@ -907,22 +954,24 @@ function loftedProfile(
       // flap that is actually folded flat stays flat regardless of how
       // round the body is elsewhere: it runs along the flat width
       // direction, which is what the degenerate flat ellipse gives.
-      grid = sampleGrid(
-        bnd,
-        (x, y) => {
-          const base = surfaceAt(y, seamT);
-          const flatBase = flatAt(seamT);
-          const flatStep = flatAt(seamT + foldSign * TANGENT_STEP);
-          const tangent = normalize2(flatStep.x - flatBase.x, flatStep.z - flatBase.z);
-          const normal = normalize2(base.x, base.z);
-          const along = Math.abs(x - attachX);
-          return { x: base.x + normal.x * thickness + tangent.x * along, z: base.z + normal.z * thickness + tangent.z * along };
-        },
-        undefined,
-        worldYOf,
-      );
+      pointAt = (x, y) => {
+        const base = surfaceAt(y, seamT);
+        const flatBase = flatAt(seamT);
+        const flatStep = flatAt(seamT + foldSign * TANGENT_STEP);
+        const tangent = normalize2(flatStep.x - flatBase.x, flatStep.z - flatBase.z);
+        const normal = normalize2(base.x, base.z);
+        const along = Math.abs(x - attachX);
+        return { x: base.x + normal.x * thickness + tangent.x * along, z: base.z + normal.z * thickness + tangent.z * along };
+      };
     }
-    out.set(face.id, { face, facets: gridToQuads(grid), outline: [gridPerimeter(grid)] });
+    const grid = sampleGrid(bnd, pointAt, undefined, worldYOf);
+    const holes = face.holes.map((hole) =>
+      hole.points.map((p) => {
+        const q = pointAt(p.x, p.y);
+        return { x: q.x, y: worldYOf(p.y), z: q.z };
+      }),
+    );
+    out.set(face.id, { face, facets: gridToQuads(grid), outline: [gridPerimeter(grid)], holes });
   }
 
   return out;
@@ -1117,14 +1166,19 @@ function gussetedPouch(
     // reads as the panel's own bottom corners rounding off rather than
     // staying square. It is formed-only, like the bulge itself — the flat
     // dieline's outer cut is still the plain rectangle it always was.
-    const { facets, outline } = sampleFace(face, rigidPts, (rx, ry) => {
+    const pointAt = (rx: number, ry: number): { x: number; y: number; z: number } => {
       const v = gussetAtLowY ? (ry - rb.min.y) / span : (rb.max.y - ry) / span;
       const bulge = fill * depth * Math.sin(Math.PI * Math.max(0, Math.min(1, v)));
       const shrink = cornerShrink(v * span);
       const roundedX = cxRow + (rx - cxRow) * shrink;
       return { x: lerp(rx, roundedX, fill), y: ry, z: lerp(0, sign * bulge, fill) };
-    });
-    out.set(face.id, { face, facets, outline: [outline] });
+    };
+    const { facets, outline } = sampleFace(face, rigidPts, pointAt);
+    // Same rigid-frame -> puffed-frame map as the grid, applied to this
+    // face's own hole loops already folded to the rigid frame by
+    // `foldedFacePoints` — a peg hole on a pouch wall bulges with the wall.
+    const holes = rigid.get(face.id)!.holes.map((hole) => hole.map((p) => pointAt(p.x, p.y)));
+    out.set(face.id, { face, facets, outline: [outline], holes });
   }
 
   // Each base half hinges to a wall along the edge it shares with that
@@ -1159,7 +1213,7 @@ function gussetedPouch(
     // to the oval width the same way at every s, and y collapses onto the
     // hinge line itself rather than staying spread across the arm's own
     // rigid length — the arm's LENGTH becomes depth in z, not height in y.
-    const { facets, outline } = sampleFace(face, rigidPts, (rx, ry) => {
+    const pointAt = (rx: number, ry: number): { x: number; y: number; z: number } => {
       const s = Math.abs(ry - hingeY) / armLength; // 0 at the wall hinge, 1 at the fold centre
       // The SAME corner shrink as the wall, in the same absolute mm from the
       // shared hinge line, so the base's own opened rim meets the wall's
@@ -1172,8 +1226,10 @@ function gussetedPouch(
         y: lerp(ry, hingeY, fill),
         z: lerp(0, sign * s * depth, fill),
       };
-    });
-    out.set(face.id, { face, facets, outline: [outline] });
+    };
+    const { facets, outline } = sampleFace(face, rigidPts, pointAt);
+    const holes = rigid.get(face.id)!.holes.map((hole) => hole.map((p) => pointAt(p.x, p.y)));
+    out.set(face.id, { face, facets, outline: [outline], holes });
   }
 
   return out;

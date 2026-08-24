@@ -19,7 +19,7 @@
  */
 import type { Vec2, Vec3 } from '../geometry/types.js';
 import { computeFormedShape, hasFormedShape, type FormedFace } from '../geometry/formedShape.js';
-import { cameraBasis, orbitTowards, project, projectFormedFaces, type CameraBasis, type ProjectedFacet, type UpAxis } from '../render/iso.js';
+import { cameraBasis, orbitTowards, project, projectFormedFaces, projectFormedHoles, type CameraBasis, type ProjectedFacet, type UpAxis } from '../render/iso.js';
 import { mmToPx, pixelFrame, triangleAffine, type PixelFrame } from '../render/texture.js';
 import { assembleDimension, drawDimensionCanvas, formatLength, type LengthUnit } from '../render/dimension.js';
 import { tweenOrbit, type OrbitAngles } from '../../packages/orbit-controls/dist/orbitControls.js';
@@ -255,6 +255,7 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
     elevation: number,
   ): {
     faces: ProjectedFacet[];
+    holes: Vec2[][];
     upAxis: 'x' | 'y' | 'z' | undefined;
     formed: boolean;
     cam: CameraBasis;
@@ -269,7 +270,15 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
     // computeFormedShape falls back to the rigid fold itself when the style
     // has no formedShape, so this is the one path for both cases.
     const folded = computeFormedShape(graph, resolved);
-    return { faces: projectFormedFaces(folded, cam), upAxis: graph.upAxis, formed, cam, worldBounds: worldBoundsOf(folded), formedShape: folded };
+    return {
+      faces: projectFormedFaces(folded, cam),
+      holes: projectFormedHoles(folded, cam),
+      upAxis: graph.upAxis,
+      formed,
+      cam,
+      worldBounds: worldBoundsOf(folded),
+      formedShape: folded,
+    };
   }
 
   function projectedBounds(faces: ProjectedFacet[]): { min: Vec2; max: Vec2 } | null {
@@ -447,7 +456,7 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
     cubeHitRegions = [];
     const state = store.getState();
     const { azimuth, elevation, view } = state.camera3d;
-    const { faces: ordered, formed, cam, worldBounds, upAxis, formedShape } = projectFaces(azimuth, elevation);
+    const { faces: ordered, holes, formed, cam, worldBounds, upAxis, formedShape } = projectFaces(azimuth, elevation);
     label.textContent = `${formed ? 'Formed pack' : 'Folded'} · orbit`;
     bgBtn.classList.toggle('on', state.bg3d === 'white');
     dimsBtn.classList.toggle('on', state.dims3d);
@@ -511,6 +520,27 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
       ctx.lineWidth = seamWidth;
       ctx.stroke();
       ctx.globalAlpha = 1;
+    }
+
+    // Punch every feature hole (peg holes, U/V tear notches) out of whatever
+    // got painted above, in one pass after all facets — see
+    // `projectFormedHoles`'s own comment for why this doesn't try to respect
+    // occlusion. `destination-out` erases to transparent, which reads as
+    // "through the board" against this canvas's own background (white or
+    // the app's transparent default), the same as the 2D dieline view.
+    if (holes.length > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.fillStyle = '#000000';
+      for (const loop of holes) {
+        const screenPts = loop.map((p) => modelToScreen(p, view, vp));
+        ctx.beginPath();
+        ctx.moveTo(screenPts[0]!.x, screenPts[0]!.y);
+        for (let i = 1; i < screenPts.length; i++) ctx.lineTo(screenPts[i]!.x, screenPts[i]!.y);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
     }
 
     if (state.dims3d && worldBounds) {

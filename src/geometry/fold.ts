@@ -116,18 +116,25 @@ export function foldTransforms(resolved: ResolvedGeometry, ratio = 1): Map<strin
   return out;
 }
 
-/** Folded 3D position of every outer-ring vertex, ready to feed a mesh builder. */
+/**
+ * Folded 3D position of every outer-ring vertex, ready to feed a mesh
+ * builder — plus every hole ring's vertices, folded through the exact same
+ * per-face rigid transform, so a peg hole or tear notch (see
+ * geometry/features.ts) ends up in the right place on the formed pack
+ * without this function's callers needing to know holes exist at all.
+ */
 export function foldedFacePoints(
   resolved: ResolvedGeometry,
   ratio = 1,
-): Map<string, { face: Face; points: Vec3[] }> {
+): Map<string, { face: Face; points: Vec3[]; holes: Vec3[][] }> {
   const transforms = foldTransforms(resolved, ratio);
-  const out = new Map<string, { face: Face; points: Vec3[] }>();
+  const out = new Map<string, { face: Face; points: Vec3[]; holes: Vec3[][] }>();
   for (const face of resolved.faces) {
     const m = transforms.get(face.id) ?? identity();
     out.set(face.id, {
       face,
       points: face.outer.points.map((p) => applyPoint(m, { x: p.x, y: p.y, z: 0 })),
+      holes: face.holes.map((hole) => hole.points.map((p) => applyPoint(m, { x: p.x, y: p.y, z: 0 }))),
     });
   }
   return out;
