@@ -167,6 +167,7 @@ export function compileStyle(def: StyleDefinition, opts: CompileOptions = {}): C
     ...(def.formedShape ? { formedShape: def.formedShape } : {}),
     ...(baseRole ? { baseFaceRole: baseRole } : {}),
     ...(def.upAxis ? { upAxis: def.upAxis } : {}),
+    ...(def.faceUVFlip ? { faceUVFlip: def.faceUVFlip } : {}),
     meta: { styleId: def.id, styleName: def.name, standard: def.standard, code: def.code, params },
   };
 

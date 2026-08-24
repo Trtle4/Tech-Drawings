@@ -89,7 +89,7 @@ export function findCoincidentPoints(
 }
 
 /** Even-odd ray cast. `ring` need not be closed explicitly (wraps last -> first). */
-function pointInRing(p: Vec2, ring: readonly Vec2[]): boolean {
+export function pointInRing(p: Vec2, ring: readonly Vec2[]): boolean {
   let inside = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
     const a = ring[i]!;

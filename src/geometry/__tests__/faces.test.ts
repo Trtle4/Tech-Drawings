@@ -490,6 +490,26 @@ describe('face seeds', () => {
     expect(resolved.faces.some((f) => f.role === 'inside_the_hole')).toBe(false);
     expect(resolved.unresolved.some((u) => u.message.includes('inside_the_hole'))).toBe(true);
   });
+
+  it('still finds the face when a hole sits exactly on its own centroid', () => {
+    // (200,50) IS the right panel's centroid (its own x/y midpoint) — the
+    // hole's peg lands exactly where `interiorPoint` tries its own material
+    // sample point first. A right_panel-named seed elsewhere in that same
+    // face must still find it; the face must still exist at all, not just
+    // fail to be named through the hole (the case above).
+    const resolved = resolveGeometry(
+      graph([...base(), circle('cut', 'peg', p(200, 50), 10)], {
+        faceSeeds: [{ role: 'right_panel', point: p(150, 25) }],
+      }),
+    );
+    const right = resolved.faces.find((f) => f.role === 'right_panel');
+    expect(right).toBeDefined();
+    expect(right!.holes).toHaveLength(1);
+    // The hole flattens to chords for topology (see arcThrough's own note on
+    // this elsewhere), so its area is a hair under the true πr².
+    expect(right!.area).toBeGreaterThan(200 * 100 - Math.PI * 100 - 5);
+    expect(right!.area).toBeLessThan(200 * 100 - 300);
+  });
 });
 
 describe('held fold angles', () => {

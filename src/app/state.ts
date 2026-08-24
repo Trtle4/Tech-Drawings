@@ -12,15 +12,30 @@
  * scratch. Nothing is patched in place, so a dimension change and a hand
  * edit can never drift out of sync with each other.
  */
-import type { DrawingLine, GeometryGraph, LineType, ResolvedGeometry, Vec2 } from '../geometry/types.js';
+import type { DrawingLine, FeatureInstance, GeometryGraph, LineType, ResolvedGeometry, Vec2 } from '../geometry/types.js';
 import { resolveGeometry } from '../geometry/resolve.js';
+import { compileFeatureLines } from '../geometry/features.js';
 import { STYLES, STYLE_BY_ID } from '../styles/index.js';
 import { compileStyle } from '../styles/compile.js';
 import type { StyleDefinition } from '../styles/schema.js';
 import { applyOverrides, describeStaleOp, type OverrideOp } from './overrides.js';
 import { DEFAULT_SNAP, fitToBounds, type Camera2D, type SnapSettings, type Viewport } from './camera2d.js';
+import type { LengthUnit } from '../render/dimension.js';
 
 export type Selection = { kind: 'line'; lineId: string } | { kind: 'face'; faceId: string } | null;
+
+/**
+ * The currently-applied artwork. Purely a rendering overlay — see
+ * `Store.setArtwork`. `image` is pre-loaded (decoded) so the 2D and 3D
+ * panes can read `naturalWidth`/`naturalHeight` and draw synchronously on
+ * every render, rather than every consumer separately awaiting a decode.
+ */
+export interface ArtworkState {
+  kind: 'png' | 'jpg' | 'svg' | 'test';
+  name: string;
+  dataUrl: string;
+  image: HTMLImageElement;
+}
 
 /** Orbit angles plus a pan/zoom of the resulting projected plane — see camera2d.ts's Camera2D, reused as-is for the 2D plane a 3D projection lands on. */
 export interface Camera3DState {
@@ -44,10 +59,37 @@ export interface AppState {
   camera3d: Camera3DState;
   snap: SnapSettings;
   primaryView: '2d' | '3d';
+  /**
+   * View state, not content — like `camera`, not tracked by undo/redo.
+   * `null` means no artwork applied; both panes fall back to their plain
+   * shaded rendering. Updating it never touches `styleId`/`params`/`ops`,
+   * so applying, replacing or removing artwork never re-derives geometry —
+   * "artwork updates the texture only, never rebuilds the mesh," literally:
+   * `getDerived()`'s cache key is `state`, but `derive()` itself never reads
+   * `state.artwork`, so a `derive()` call that DOES re-run because some
+   * unrelated field changed still reuses the same mesh either way.
+   */
+  artwork: ArtworkState | null;
+  /** 3D pane background — 'white' for a clean screenshot/handoff backdrop. */
+  bg3d: 'theme' | 'white';
+  /** Overall-size dimension lines (witnesses, arrowheads, a labelled span) on the flat blank / the formed pack. View state, not content. */
+  dims2d: boolean;
+  dims3d: boolean;
+  /** When on, the 3D pane's dimension lines measure the assembled pack's true outside envelope (raw geometry padded by `graph.caliper` on each wall) instead of the raw modeled/mid-plane bounding box. No effect unless `dims3d` is also on. */
+  outsideDims3d: boolean;
+  /** Flap faces currently checked for a group hinge-angle edit — see flapPanel.ts. View state, not content: it names faces, not an edit. */
+  flapSelection: string[];
+  /** Display unit for dimension callouts (2D, 3D, PNG export) — mm everywhere internally, this only changes the text. */
+  unit: LengthUnit;
 }
 
 export interface StaleOverride {
   op: OverrideOp;
+  message: string;
+}
+
+export interface StaleFeature {
+  feature: FeatureInstance;
   message: string;
 }
 
@@ -56,7 +98,15 @@ export interface Derived {
   /** Every parameter after defaults, overrides and clamping. */
   compiledParams: Record<string, number>;
   warnings: string[];
-  /** The edited graph: the compiled base with every op in `state.ops` replayed on top. */
+  /**
+   * The edited graph: the compiled base with every op in `state.ops`
+   * replayed on top, PLUS every placed feature's own compiled geometry
+   * (see `compileFeatureLines`) appended to `lines` — a feature is not a
+   * separate thing the rest of the app has to know about, it is real cut
+   * or perf geometry by the time anything downstream (2D canvas, DXF
+   * export, 3D pane) reads this. `graph.features` itself still lists the
+   * placed `FeatureInstance`s, for the features panel.
+   */
   graph: GeometryGraph;
   resolved: ResolvedGeometry;
   /**
@@ -67,13 +117,39 @@ export interface Derived {
    * silently doing nothing.
    */
   staleOverrides: StaleOverride[];
+  /** Placed features whose anchor face or reference edge doesn't exist at the current dimensions — the feature equivalent of `staleOverrides`, surfaced by the features panel instead of silently vanishing. */
+  staleFeatures: StaleFeature[];
 }
 
 function derive(state: AppState): Derived {
   const def = STYLE_BY_ID.get(state.styleId) ?? STYLES[0]!;
   const compiled = compileStyle(def, { params: state.params });
   const { graph, hingeAngleOverrides, staleOps } = applyOverrides(compiled.graph, state.ops);
-  const resolved = resolveGeometry(graph, { angles: hingeAngleOverrides });
+
+  let resolved: ResolvedGeometry;
+  let finalGraph = graph;
+  const staleFeatures: StaleFeature[] = [];
+
+  if (graph.features.length === 0) {
+    resolved = resolveGeometry(graph, { angles: hingeAngleOverrides });
+  } else {
+    // Pass 1 locates each feature's anchor face and reference edge at the
+    // CURRENT dimensions — reanchorSeeds:false so this exploratory resolve
+    // never mutates graph.faceSeeds in place (resolveGeometry's default),
+    // which would otherwise re-anchor a seed to, say, a face's own new
+    // centroid before the real pass below ever runs, corrupting it before
+    // that pass gets to reflect the feature geometry that's about to be
+    // added — the same mistake, and fix, this pipeline's own tests hit.
+    const pass1 = resolveGeometry(graph, { angles: hingeAngleOverrides, reanchorSeeds: false });
+    const featureLines: DrawingLine[] = [];
+    for (const feature of graph.features) {
+      const lines = compileFeatureLines(feature, graph, pass1);
+      if (lines) featureLines.push(...lines);
+      else staleFeatures.push({ feature, message: `"${feature.kind}" could not be placed — its anchor face or reference edge does not exist at this dimension.` });
+    }
+    finalGraph = featureLines.length > 0 ? { ...graph, lines: [...graph.lines, ...featureLines] } : graph;
+    resolved = resolveGeometry(finalGraph, { angles: hingeAngleOverrides });
+  }
 
   const staleOverrides: StaleOverride[] = staleOps.map((op) => ({ op, message: describeStaleOp(op) }));
   for (const op of state.ops) {
@@ -84,7 +160,7 @@ function derive(state: AppState): Derived {
     if (!stillMatches) staleOverrides.push({ op, message: describeStaleOp(op) });
   }
 
-  return { def, compiledParams: compiled.params, warnings: compiled.warnings, graph, resolved, staleOverrides };
+  return { def, compiledParams: compiled.params, warnings: compiled.warnings, graph: finalGraph, resolved, staleOverrides, staleFeatures };
 }
 
 /** The part of app state undo/redo tracks — content, not view state like camera or selection. */
@@ -106,6 +182,13 @@ export function createInitialState(styleId?: string): AppState {
     camera3d: { ...DEFAULT_ORBIT, view: { cx: 0, cy: 0, zoom: 1 } },
     snap: DEFAULT_SNAP,
     primaryView: '2d',
+    artwork: null,
+    bg3d: 'theme',
+    dims2d: true,
+    dims3d: true,
+    flapSelection: [],
+    unit: 'mm',
+    outsideDims3d: false,
   };
 }
 
@@ -180,13 +263,18 @@ export class Store {
     this.set({ ...next, selection: null });
   }
 
-  /** Switching style starts clean: a different style's dimensions and a stranger's hand edits do not mix. */
+  /**
+   * Switching style starts clean: a different style's dimensions and a
+   * stranger's hand edits do not mix. Artwork goes too, for the same
+   * reason — it's registered to the OLD style's own blank bounds, and would
+   * render stretched and meaningless across a completely different shape.
+   */
   setStyle(styleId: string): void {
     const def = STYLE_BY_ID.get(styleId);
     if (!def) return;
     this.pushHistory();
     const compiled = compileStyle(def);
-    this.set({ styleId, params: compiled.params, ops: [], selection: null });
+    this.set({ styleId, params: compiled.params, ops: [], selection: null, artwork: null, flapSelection: [] });
   }
 
   setParam(id: string, value: number): void {
@@ -215,6 +303,35 @@ export class Store {
     this.set({ primaryView: view });
   }
 
+  /** Apply (or replace) artwork. A pure rendering-layer overlay — see `AppState.artwork`. */
+  setArtwork(artwork: ArtworkState): void {
+    this.set({ artwork });
+  }
+
+  clearArtwork(): void {
+    this.set({ artwork: null });
+  }
+
+  setBg3D(mode: 'theme' | 'white'): void {
+    this.set({ bg3d: mode });
+  }
+
+  setDims2D(on: boolean): void {
+    this.set({ dims2d: on });
+  }
+
+  setDims3D(on: boolean): void {
+    this.set({ dims3d: on });
+  }
+
+  setUnit(unit: LengthUnit): void {
+    this.set({ unit });
+  }
+
+  setOutsideDims3D(on: boolean): void {
+    this.set({ outsideDims3d: on });
+  }
+
   pushOp(op: OverrideOp): void {
     this.pushHistory();
     this.set({ ops: [...this.state.ops, op] });
@@ -232,6 +349,7 @@ export class Store {
     const ops = this.state.ops.filter((op) => {
       if (op.kind === 'add_line') return op.id !== lineId;
       if (op.kind === 'set_hinge_angle') return true;
+      if (op.kind === 'add_feature' || op.kind === 'delete_feature' || op.kind === 'set_feature') return true;
       if (op.kind === 'move_vertex') return !op.targets.some((t) => t.lineId === lineId);
       return op.lineId !== lineId;
     });
@@ -278,6 +396,47 @@ export class Store {
 
   setHingeAngle(faceA: string, faceB: string, angleRad: number): void {
     this.pushOp({ kind: 'set_hinge_angle', faceA, faceB, angleRad });
+  }
+
+  setFlapSelection(faceIds: string[]): void {
+    this.set({ flapSelection: faceIds });
+  }
+
+  /**
+   * Set one angle across every hinge touching any of the given faces, as a
+   * single undo step — the group-select counterpart to `setHingeAngle`,
+   * which only ever knows about one hinge at a time.
+   */
+  setHingeAnglesForFaces(faceIds: string[], angleRad: number): void {
+    const hinges = this.getDerived().resolved.hinges;
+    const ops: OverrideOp[] = [];
+    for (const faceId of faceIds) {
+      for (const hinge of hinges) {
+        if (hinge.faceA === faceId || hinge.faceB === faceId) {
+          ops.push({ kind: 'set_hinge_angle', faceA: hinge.faceA, faceB: hinge.faceB, angleRad });
+        }
+      }
+    }
+    if (ops.length === 0) return;
+    this.pushHistory();
+    this.set({ ops: [...this.state.ops, ...ops] });
+  }
+
+  /** Places a feature from the library, anchored to a face and offset from a reference edge. Returns its id, for a caller that wants to select/edit it right away. */
+  addFeature(kind: string, anchorFaceRole: string, referenceEdgeRole: string, offset: Vec2, rotation: number, size: Vec2): string {
+    const id = `user:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`;
+    const feature: FeatureInstance = { id, kind, anchorFaceRole, referenceEdgeRole, offset, rotation, size, sourceStyle: 'user' };
+    this.pushOp({ kind: 'add_feature', feature });
+    return id;
+  }
+
+  deleteFeature(featureId: string): void {
+    this.pushOp({ kind: 'delete_feature', featureId });
+  }
+
+  /** Edits a placed feature's offset, rotation, size, or anchoring after the fact. */
+  setFeature(featureId: string, patch: Partial<Pick<FeatureInstance, 'anchorFaceRole' | 'referenceEdgeRole' | 'offset' | 'rotation' | 'size'>>): void {
+    this.pushOp({ kind: 'set_feature', featureId, patch });
   }
 
   fitToBlank(vp: Viewport): void {

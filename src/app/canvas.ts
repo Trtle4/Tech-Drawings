@@ -16,6 +16,7 @@
  */
 import type { DrawingLine, LineType, Path, Vec2 } from '../geometry/types.js';
 import { flattenPath } from '../geometry/arrangement.js';
+import { computeDimension, formatLength, type DimensionGeometry } from '../render/dimension.js';
 import { isLineOverridden, translatePath } from './overrides.js';
 import { findCoincidentPoints, hitTestEndpoint, hitTestFace, hitTestLine } from './hitTest.js';
 import {
@@ -58,6 +59,22 @@ type LiveDrag =
   | { kind: 'draw_place'; start: Vec2 };
 
 const d = (pts: Vec2[]) => `M ${pts.map((p) => `${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' L ')}`;
+
+const DIM_OFFSET_PX = 30;
+const DIM_ARROW_PX = 5;
+
+/** One overall dimension (witnesses + arrowheads + label) as SVG, in screen px. All sizes are fixed screen pixels, not model mm, so they stay legible at any zoom. */
+function renderDimensionSvg(g: DimensionGeometry, text: string): string {
+  const witnessLines = g.witnesses
+    .map(([a, b]) => `<line x1="${a.x.toFixed(2)}" y1="${a.y.toFixed(2)}" x2="${b.x.toFixed(2)}" y2="${b.y.toFixed(2)}" stroke="var(--l-dimension)" stroke-width="1"/>`)
+    .join('');
+  const dimLine = `<line x1="${g.line[0].x.toFixed(2)}" y1="${g.line[0].y.toFixed(2)}" x2="${g.line[1].x.toFixed(2)}" y2="${g.line[1].y.toFixed(2)}" stroke="var(--l-dimension)" stroke-width="1"/>`;
+  const arrows = g.arrowheads
+    .map((tri) => `<path d="${d(tri)} Z" fill="var(--l-dimension)"/>`)
+    .join('');
+  const label = `<text x="${g.label.pos.x.toFixed(2)}" y="${g.label.pos.y.toFixed(2)}" transform="rotate(${((g.label.angle * 180) / Math.PI).toFixed(2)} ${g.label.pos.x.toFixed(2)} ${g.label.pos.y.toFixed(2)})" text-anchor="middle" dominant-baseline="middle" font-family="var(--mono)" font-size="11" fill="var(--l-dimension)">${text}</text>`;
+  return `${witnessLines}${dimLine}${arrows}${label}`;
+}
 
 function effectivePath(line: DrawingLine, drag: LiveDrag | null): Path {
   if (!drag) return line.geometry;
@@ -107,6 +124,9 @@ export function mountCanvas(container: HTMLElement, store: Store): CanvasControl
         <button class="tbtn${store.getState().snap.midpoints ? ' on' : ''}" data-snap="midpoints">Midpoints</button>
       </div>
       <div class="toolbar-group">
+        <button class="tbtn${store.getState().dims2d ? ' on' : ''}" id="canvas-dims" title="Overall width/height dimension lines">Dims</button>
+      </div>
+      <div class="toolbar-group">
         <button class="tbtn icon" id="canvas-fit" title="Fit to blank">⤢</button>
       </div>
     </div>`;
@@ -116,6 +136,7 @@ export function mountCanvas(container: HTMLElement, store: Store): CanvasControl
   const toolButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('[data-tool]'));
   const snapButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('[data-snap]'));
   const fitButton = container.querySelector<HTMLButtonElement>('#canvas-fit')!;
+  const dimsButton = container.querySelector<HTMLButtonElement>('#canvas-dims')!;
 
   let tool: Tool = { kind: 'select' };
   let drag: LiveDrag | null = null;
@@ -375,6 +396,11 @@ export function mountCanvas(container: HTMLElement, store: Store): CanvasControl
   }
 
   fitButton.addEventListener('click', () => fit());
+  dimsButton.addEventListener('click', () => {
+    const on = !store.getState().dims2d;
+    store.setDims2D(on);
+    dimsButton.classList.toggle('on', on);
+  });
 
   function fit(): void {
     store.fitToBlank(viewport());
@@ -387,17 +413,59 @@ export function mountCanvas(container: HTMLElement, store: Store): CanvasControl
     const cam = store.getState().camera;
     const vp = viewport();
     const selection = store.getState().selection;
+    const artwork = store.getState().artwork;
 
     const toScreen = (p: Vec2) => modelToScreen(p, cam, vp);
 
     const gridLayer = renderGrid(cam, vp);
 
+    // The flat blank's own (x, y) IS the artwork's UV space — no per-face
+    // mapping needed here the way the 3D pane needs one, just place the
+    // image at the blank's screen-space rect. Still axis-aligned after
+    // `modelToScreen` (pan/zoom is uniform scale + translate, no rotation),
+    // so a plain x/y/width/height suffices.
+    const artworkLayer = (() => {
+      if (!artwork) return '';
+      const bounds = derived.resolved.blankBounds;
+      if (!bounds) return '';
+      const topLeft = toScreen({ x: bounds.min.x, y: bounds.max.y });
+      const bottomRight = toScreen({ x: bounds.max.x, y: bounds.min.y });
+      const w = bottomRight.x - topLeft.x;
+      const h = bottomRight.y - topLeft.y;
+      return `<image x="${topLeft.x.toFixed(2)}" y="${topLeft.y.toFixed(2)}" width="${w.toFixed(2)}" height="${h.toFixed(2)}" href="${artwork.dataUrl}" preserveAspectRatio="none"/>`;
+    })();
+
+    // Overall width (below the blank) and height (left of the blank) —
+    // the blank's own screen-space corners are already known from
+    // `toScreen`, so this is the two witnessed spans a technical drawing's
+    // outside-dimensions callout would show, not a per-panel breakdown.
+    const dimensionLayer = (() => {
+      if (!store.getState().dims2d) return '';
+      const bounds = derived.resolved.blankBounds;
+      if (!bounds) return '';
+      const bl = toScreen({ x: bounds.min.x, y: bounds.min.y });
+      const br = toScreen({ x: bounds.max.x, y: bounds.min.y });
+      const tl = toScreen({ x: bounds.min.x, y: bounds.max.y });
+      const width = computeDimension(bl, br, 1, DIM_OFFSET_PX, DIM_ARROW_PX);
+      const height = computeDimension(bl, tl, -1, DIM_OFFSET_PX, DIM_ARROW_PX);
+      const unit = store.getState().unit;
+      return (
+        renderDimensionSvg(width, formatLength(bounds.max.x - bounds.min.x, unit)) +
+        renderDimensionSvg(height, formatLength(bounds.max.y - bounds.min.y, unit))
+      );
+    })();
+
+    // With artwork applied, an opaque board fill would wash it out —
+    // faces go transparent except the selection highlight, which still
+    // needs to read on top of the art.
     const faceLayer = derived.resolved.faces
       .map((f) => {
         const isSel = selection?.kind === 'face' && selection.faceId === f.id;
         const outer = d(f.outer.points.map(toScreen));
         const holes = f.holes.map((h) => `${d(h.points.map(toScreen))} Z`).join(' ');
-        return `<path d="${outer} Z ${holes}" fill-rule="evenodd" fill="${isSel ? 'var(--accent-soft)' : 'var(--board-white)'}" opacity="${isSel ? '0.9' : '0.75'}" data-face-id="${f.id}"/>`;
+        const fill = isSel ? 'var(--accent-soft)' : artwork ? 'none' : 'var(--board-white)';
+        const opacity = isSel ? '0.9' : artwork ? '0' : '0.75';
+        return `<path d="${outer} Z ${holes}" fill-rule="evenodd" fill="${fill}" opacity="${opacity}" data-face-id="${f.id}"/>`;
       })
       .join('');
 
@@ -457,7 +525,7 @@ export function mountCanvas(container: HTMLElement, store: Store): CanvasControl
       }
     }
 
-    svg.innerHTML = `${gridLayer}<g>${faceLayer}</g><g>${lineLayer}</g><g>${overrideBadgeLayer}</g><g>${handleLayer}</g><g>${overlay}</g>`;
+    svg.innerHTML = `${gridLayer}<g>${artworkLayer}</g><g>${faceLayer}</g><g>${lineLayer}</g><g>${overrideBadgeLayer}</g><g>${handleLayer}</g><g>${dimensionLayer}</g><g>${overlay}</g>`;
   }
 
   function renderGrid(cam: Camera2D, vp: Viewport): string {

@@ -1,0 +1,12 @@
+{
+  "name": "orbit-controls",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Renderer-agnostic orbit-camera state: angle wrapping, eased tweening, fixed-step nudging. Ported from the RSC Dieline Generator's fold3d.js/viewcube.js.",
+  "main": "dist/orbitControls.js",
+  "types": "dist/orbitControls.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  }
+}

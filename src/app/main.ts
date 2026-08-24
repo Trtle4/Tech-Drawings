@@ -5,6 +5,10 @@
 import { createInitialState, Store } from './state.js';
 import { mountPanel } from './panel.js';
 import { mountInspector } from './inspector.js';
+import { mountFlapPanel } from './flapPanel.js';
+import { mountFeaturePanel } from './featurePanel.js';
+import { mountArtworkPanel } from './artworkPanel.js';
+import { mountExportPanel } from './exportPanel.js';
 import { mountCanvas } from './canvas.js';
 import { mountPane3D } from './pane3d.js';
 
@@ -19,6 +23,10 @@ function boot(): void {
         <button class="tbtn icon" id="btn-undo" title="Undo (Ctrl+Z)">↶</button>
         <button class="tbtn icon" id="btn-redo" title="Redo (Ctrl+Shift+Z)">↷</button>
       </div>
+      <div class="toolbar-group" id="unit-controls">
+        <button class="tbtn" id="unit-mm" title="Display dimensions in millimetres">mm</button>
+        <button class="tbtn" id="unit-in" title="Display dimensions in inches">in</button>
+      </div>
       <div class="spacer"></div>
       <button class="btn" id="btn-revert-all" title="Undo every edit in the drawing; dimensions are left alone">Revert all</button>
     </header>
@@ -26,6 +34,10 @@ function boot(): void {
       <aside id="panel">
         <div id="panel-body"></div>
         <div id="inspector-body"></div>
+        <div id="flap-body"></div>
+        <div id="feature-body"></div>
+        <div id="artwork-body"></div>
+        <div id="export-body"></div>
       </aside>
       <div id="viewport" class="viewport-2d-primary">
         <div id="pane-2d" data-primary="2d"></div>
@@ -37,9 +49,36 @@ function boot(): void {
 
   mountPanel(root.querySelector<HTMLElement>('#panel-body')!, store);
   mountInspector(root.querySelector<HTMLElement>('#inspector-body')!, store);
+  mountFlapPanel(root.querySelector<HTMLElement>('#flap-body')!, store);
+  mountFeaturePanel(root.querySelector<HTMLElement>('#feature-body')!, store);
+  mountArtworkPanel(root.querySelector<HTMLElement>('#artwork-body')!, store);
+  mountExportPanel(root.querySelector<HTMLElement>('#export-body')!, store);
   mountCanvas(root.querySelector<HTMLElement>('#pane-2d')!, store);
   mountPane3D(root.querySelector<HTMLElement>('#pane-3d')!, store);
   mountHistoryControls(root, store);
+  mountUnitToggle(root, store);
+}
+
+/**
+ * mm/inch is a single global toggle in the header, not a per-pane control —
+ * it changes how every dimension callout (2D, 3D, PNG export) reads its
+ * text, nothing about the model, so one switch for the whole app is right.
+ */
+function mountUnitToggle(root: HTMLElement, store: Store): void {
+  const mmBtn = root.querySelector<HTMLButtonElement>('#unit-mm')!;
+  const inBtn = root.querySelector<HTMLButtonElement>('#unit-in')!;
+
+  function render(): void {
+    const unit = store.getState().unit;
+    mmBtn.classList.toggle('on', unit === 'mm');
+    inBtn.classList.toggle('on', unit === 'in');
+  }
+
+  mmBtn.addEventListener('click', () => store.setUnit('mm'));
+  inBtn.addEventListener('click', () => store.setUnit('in'));
+
+  store.subscribe(render);
+  render();
 }
 
 /**
