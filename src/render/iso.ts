@@ -101,13 +101,14 @@ export function orbitTowards(dir: Vec3, upAxis: UpAxis = 'y'): { azimuth: number
 
 export interface Projected2D {
   x: number;
+  /** Camera-space up: same y-up convention as flat model (x, y), so this composes directly with `modelToScreen` (camera2d.ts) exactly the way the 2D pane's own flat points do — that function is what turns y-up into a y-down pixel row, once. */
   y: number;
   /** Camera-space depth: higher = nearer the camera. */
   depth: number;
 }
 
 export function project(p: Vec3, cam: CameraBasis): Projected2D {
-  return { x: dot(p, cam.right), y: -dot(p, cam.up), depth: dot(p, cam.forward) };
+  return { x: dot(p, cam.right), y: dot(p, cam.up), depth: dot(p, cam.forward) };
 }
 
 /**

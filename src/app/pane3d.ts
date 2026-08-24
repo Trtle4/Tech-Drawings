@@ -364,24 +364,22 @@ export function mountPane3D(container: HTMLElement, store: Store): Pane3DControl
    * against the actual carton styles rather than solved generally here.
    */
   function paintTexture(screenPts: Vec2[], uvPts: Vec2[], frame: PixelFrame, image: CanvasImageSource, opacity: number): void {
+    // `mmToPx`, then a point-reflection through the image's own centre.
+    // Verified empirically against the test artwork (not re-derived from
+    // first principles, on purpose — see below): with this reflection, the
+    // base face's own big "F" and both its crimp-band labels land upright,
+    // in the right place; without it, they land upside down. `iso.ts`'s
+    // `project()` also went through a real fix (it used to negate the
+    // camera-space y a second time, inverting every pack's own up/down
+    // orientation — see its own history), and that fix does NOT change what
+    // this function needs: this reflection is a property of the mapping
+    // between flat-mm pixel space and screen pixel space, independent of
+    // which way `project()` happens to route "up". Re-verify against the
+    // test artwork (the "Apply test artwork" button in the artwork panel)
+    // before ever touching this again — the two pipelines are easy to
+    // reason about wrongly and hard to reason about right.
     const imgW = (image as HTMLImageElement).naturalWidth || 0;
     const imgH = (image as HTMLImageElement).naturalHeight || 0;
-    // `mmToPx`, then a point-reflection through the image's own centre. The
-    // reflection corrects for a real (and reasoned-through, not guessed)
-    // parity difference between this module's two coordinate pipelines:
-    // `mmToPx` takes flat mm straight to pixel space with exactly one axis
-    // negation (y, to go from the model's y-up to an image's y-down). This
-    // module's own world-to-screen pipeline negates y a SECOND time —
-    // `project()`'s `-dot(p, cam.up)` and then `modelToScreen`'s own
-    // `height/2 - (...)`, which cancel — and leaves x with no negation at
-    // all. So relative to raw flat (x, y), the destination (screen) carries
-    // zero net axis flips while the source (image pixels, via `mmToPx`)
-    // carries exactly one — a parity mismatch on both axes at once, which
-    // reads as a full 180° rotation, not a plain left-right mirror. This
-    // reflects the source once more to match, confirmed against the test
-    // artwork: the base face's own big "F" and both its crimp-band labels
-    // (physically at opposite ends of the panel) all land upright, in the
-    // right place, only with this correction applied.
     const src = (p: Vec2): Vec2 => {
       const px = mmToPx(p, frame);
       return { x: imgW - px.x, y: imgH - px.y };
