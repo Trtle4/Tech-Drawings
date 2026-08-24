@@ -142,6 +142,66 @@ describe('setHingeAngle', () => {
   });
 });
 
+describe('features — addFeature / setFeature / deleteFeature', () => {
+  function frontPanelEdge(store: Store) {
+    const derived = store.getDerived();
+    const face = derived.resolved.faces.find((f) => f.role === 'front_panel')!;
+    const edge = derived.graph.lines.find((l) => l.role.includes('front_panel'))!;
+    return { face, edge };
+  }
+
+  it('places a hole that resolves as a real hole in the anchor face', () => {
+    const store = new Store(createInitialState(fefco0201.id));
+    const { edge } = frontPanelEdge(store);
+    store.addFeature('peg_hole.round', 'front_panel', edge.role, { x: 75, y: 30 }, 0, { x: 10, y: 10 });
+    const derived = store.getDerived();
+    expect(derived.graph.features).toHaveLength(1);
+    const face = derived.resolved.faces.find((f) => f.role === 'front_panel')!;
+    expect(face.holes).toHaveLength(1);
+    expect(derived.staleFeatures).toHaveLength(0);
+  });
+
+  it('setFeature edits the placed feature, as its own undo step', () => {
+    const store = new Store(createInitialState(fefco0201.id));
+    const { edge } = frontPanelEdge(store);
+    const id = store.addFeature('peg_hole.round', 'front_panel', edge.role, { x: 75, y: 30 }, 0, { x: 10, y: 10 });
+    store.setFeature(id, { offset: { x: 120, y: 30 } });
+    expect(store.getDerived().graph.features.find((f) => f.id === id)!.offset.x).toBe(120);
+
+    store.undo();
+    expect(store.getDerived().graph.features.find((f) => f.id === id)!.offset.x).toBe(75);
+    expect(store.getDerived().graph.features).toHaveLength(1); // the add itself survives — one undo, one step
+  });
+
+  it('deleteFeature removes it and the hole it cut', () => {
+    const store = new Store(createInitialState(fefco0201.id));
+    const { edge } = frontPanelEdge(store);
+    const id = store.addFeature('peg_hole.round', 'front_panel', edge.role, { x: 75, y: 30 }, 0, { x: 10, y: 10 });
+    store.deleteFeature(id);
+    const derived = store.getDerived();
+    expect(derived.graph.features).toHaveLength(0);
+    const face = derived.resolved.faces.find((f) => f.role === 'front_panel')!;
+    expect(face.holes).toHaveLength(0);
+  });
+
+  it('a feature survives a dimension change, staying anchored to its reference edge rather than an absolute position', () => {
+    const store = new Store(createInitialState(fefco0201.id));
+    const { edge } = frontPanelEdge(store);
+    const id = store.addFeature('peg_hole.round', 'front_panel', edge.role, { x: 75, y: 30 }, 0, { x: 10, y: 10 });
+    const before = store.getDerived().resolved.faces.find((f) => f.role === 'front_panel')!;
+    expect(before.holes).toHaveLength(1);
+
+    const widthParam = Object.keys(store.getState().params).find((k) => store.getState().params[k] === 200) ?? Object.keys(store.getState().params)[0]!;
+    store.setParam(widthParam, store.getState().params[widthParam]! + 40);
+
+    const after = store.getDerived();
+    expect(after.graph.features.find((f) => f.id === id)).toBeDefined();
+    expect(after.staleFeatures).toHaveLength(0);
+    const afterFace = after.resolved.faces.find((f) => f.role === 'front_panel')!;
+    expect(afterFace.holes).toHaveLength(1);
+  });
+});
+
 describe('fitToBlank', () => {
   it('centres the camera on the blank', () => {
     const store = new Store(createInitialState(fefco0201.id));

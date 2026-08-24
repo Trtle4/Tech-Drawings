@@ -12,8 +12,9 @@
  * scratch. Nothing is patched in place, so a dimension change and a hand
  * edit can never drift out of sync with each other.
  */
-import type { DrawingLine, GeometryGraph, LineType, ResolvedGeometry, Vec2 } from '../geometry/types.js';
+import type { DrawingLine, FeatureInstance, GeometryGraph, LineType, ResolvedGeometry, Vec2 } from '../geometry/types.js';
 import { resolveGeometry } from '../geometry/resolve.js';
+import { compileFeatureLines } from '../geometry/features.js';
 import { STYLES, STYLE_BY_ID } from '../styles/index.js';
 import { compileStyle } from '../styles/compile.js';
 import type { StyleDefinition } from '../styles/schema.js';
@@ -87,12 +88,25 @@ export interface StaleOverride {
   message: string;
 }
 
+export interface StaleFeature {
+  feature: FeatureInstance;
+  message: string;
+}
+
 export interface Derived {
   def: StyleDefinition;
   /** Every parameter after defaults, overrides and clamping. */
   compiledParams: Record<string, number>;
   warnings: string[];
-  /** The edited graph: the compiled base with every op in `state.ops` replayed on top. */
+  /**
+   * The edited graph: the compiled base with every op in `state.ops`
+   * replayed on top, PLUS every placed feature's own compiled geometry
+   * (see `compileFeatureLines`) appended to `lines` — a feature is not a
+   * separate thing the rest of the app has to know about, it is real cut
+   * or perf geometry by the time anything downstream (2D canvas, DXF
+   * export, 3D pane) reads this. `graph.features` itself still lists the
+   * placed `FeatureInstance`s, for the features panel.
+   */
   graph: GeometryGraph;
   resolved: ResolvedGeometry;
   /**
@@ -103,13 +117,39 @@ export interface Derived {
    * silently doing nothing.
    */
   staleOverrides: StaleOverride[];
+  /** Placed features whose anchor face or reference edge doesn't exist at the current dimensions — the feature equivalent of `staleOverrides`, surfaced by the features panel instead of silently vanishing. */
+  staleFeatures: StaleFeature[];
 }
 
 function derive(state: AppState): Derived {
   const def = STYLE_BY_ID.get(state.styleId) ?? STYLES[0]!;
   const compiled = compileStyle(def, { params: state.params });
   const { graph, hingeAngleOverrides, staleOps } = applyOverrides(compiled.graph, state.ops);
-  const resolved = resolveGeometry(graph, { angles: hingeAngleOverrides });
+
+  let resolved: ResolvedGeometry;
+  let finalGraph = graph;
+  const staleFeatures: StaleFeature[] = [];
+
+  if (graph.features.length === 0) {
+    resolved = resolveGeometry(graph, { angles: hingeAngleOverrides });
+  } else {
+    // Pass 1 locates each feature's anchor face and reference edge at the
+    // CURRENT dimensions — reanchorSeeds:false so this exploratory resolve
+    // never mutates graph.faceSeeds in place (resolveGeometry's default),
+    // which would otherwise re-anchor a seed to, say, a face's own new
+    // centroid before the real pass below ever runs, corrupting it before
+    // that pass gets to reflect the feature geometry that's about to be
+    // added — the same mistake, and fix, this pipeline's own tests hit.
+    const pass1 = resolveGeometry(graph, { angles: hingeAngleOverrides, reanchorSeeds: false });
+    const featureLines: DrawingLine[] = [];
+    for (const feature of graph.features) {
+      const lines = compileFeatureLines(feature, graph, pass1);
+      if (lines) featureLines.push(...lines);
+      else staleFeatures.push({ feature, message: `"${feature.kind}" could not be placed — its anchor face or reference edge does not exist at this dimension.` });
+    }
+    finalGraph = featureLines.length > 0 ? { ...graph, lines: [...graph.lines, ...featureLines] } : graph;
+    resolved = resolveGeometry(finalGraph, { angles: hingeAngleOverrides });
+  }
 
   const staleOverrides: StaleOverride[] = staleOps.map((op) => ({ op, message: describeStaleOp(op) }));
   for (const op of state.ops) {
@@ -120,7 +160,7 @@ function derive(state: AppState): Derived {
     if (!stillMatches) staleOverrides.push({ op, message: describeStaleOp(op) });
   }
 
-  return { def, compiledParams: compiled.params, warnings: compiled.warnings, graph, resolved, staleOverrides };
+  return { def, compiledParams: compiled.params, warnings: compiled.warnings, graph: finalGraph, resolved, staleOverrides, staleFeatures };
 }
 
 /** The part of app state undo/redo tracks — content, not view state like camera or selection. */
@@ -309,6 +349,7 @@ export class Store {
     const ops = this.state.ops.filter((op) => {
       if (op.kind === 'add_line') return op.id !== lineId;
       if (op.kind === 'set_hinge_angle') return true;
+      if (op.kind === 'add_feature' || op.kind === 'delete_feature' || op.kind === 'set_feature') return true;
       if (op.kind === 'move_vertex') return !op.targets.some((t) => t.lineId === lineId);
       return op.lineId !== lineId;
     });
@@ -379,6 +420,23 @@ export class Store {
     if (ops.length === 0) return;
     this.pushHistory();
     this.set({ ops: [...this.state.ops, ...ops] });
+  }
+
+  /** Places a feature from the library, anchored to a face and offset from a reference edge. Returns its id, for a caller that wants to select/edit it right away. */
+  addFeature(kind: string, anchorFaceRole: string, referenceEdgeRole: string, offset: Vec2, rotation: number, size: Vec2): string {
+    const id = `user:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`;
+    const feature: FeatureInstance = { id, kind, anchorFaceRole, referenceEdgeRole, offset, rotation, size, sourceStyle: 'user' };
+    this.pushOp({ kind: 'add_feature', feature });
+    return id;
+  }
+
+  deleteFeature(featureId: string): void {
+    this.pushOp({ kind: 'delete_feature', featureId });
+  }
+
+  /** Edits a placed feature's offset, rotation, size, or anchoring after the fact. */
+  setFeature(featureId: string, patch: Partial<Pick<FeatureInstance, 'anchorFaceRole' | 'referenceEdgeRole' | 'offset' | 'rotation' | 'size'>>): void {
+    this.pushOp({ kind: 'set_feature', featureId, patch });
   }
 
   fitToBlank(vp: Viewport): void {

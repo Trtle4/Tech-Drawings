@@ -16,7 +16,7 @@
  * constraint solving. `move_point` still exists for the deliberate opposite:
  * detach one line's endpoint and leave every other line alone.
  */
-import type { DrawingLine, GeometryGraph, LineType, Path, Vec2 } from '../geometry/types.js';
+import type { DrawingLine, FeatureInstance, GeometryGraph, LineType, Path, Vec2 } from '../geometry/types.js';
 import { USER_SOURCE } from '../geometry/types.js';
 
 export type OverrideOp =
@@ -43,7 +43,12 @@ export type OverrideOp =
    * across a recompile as long as the style's structure (not just its
    * dimensions) is unchanged.
    */
-  | { kind: 'set_hinge_angle'; faceA: string; faceB: string; angleRad: number };
+  | { kind: 'set_hinge_angle'; faceA: string; faceB: string; angleRad: number }
+  /** A placed feature — the same non-destructive treatment as a hand-drawn line: a style's own `graph.features` (always empty in v1) plus every add_feature still standing, in order. */
+  | { kind: 'add_feature'; feature: FeatureInstance }
+  | { kind: 'delete_feature'; featureId: string }
+  /** Editing a placed feature after the fact — offset, rotation, size, or re-anchoring it to a different face/edge. */
+  | { kind: 'set_feature'; featureId: string; patch: Partial<Pick<FeatureInstance, 'anchorFaceRole' | 'referenceEdgeRole' | 'offset' | 'rotation' | 'size'>> };
 
 export interface AppliedOverrides {
   graph: GeometryGraph;
@@ -63,6 +68,7 @@ export function isLineOverridden(line: DrawingLine, ops: readonly OverrideOp[]):
   if (line.sourceStyle === USER_SOURCE) return true;
   return ops.some((op) => {
     if (op.kind === 'add_line' || op.kind === 'set_hinge_angle') return false;
+    if (op.kind === 'add_feature' || op.kind === 'delete_feature' || op.kind === 'set_feature') return false;
     if (op.kind === 'move_vertex') return op.targets.some((t) => t.lineId === line.id);
     return op.lineId === line.id;
   });
@@ -85,6 +91,12 @@ export function describeStaleOp(op: OverrideOp): string {
       return 'An added line no longer applies.';
     case 'set_hinge_angle':
       return `A hinge angle override no longer matches any hinge between "${op.faceA}" and "${op.faceB}".`;
+    case 'add_feature':
+      return 'A placed feature no longer applies.';
+    case 'delete_feature':
+      return 'A feature delete no longer applies — it no longer exists.';
+    case 'set_feature':
+      return 'A feature edit no longer applies — it no longer exists.';
   }
 }
 
@@ -121,6 +133,7 @@ export function translatePath(p: Path, dx: number, dy: number): Path {
  */
 export function applyOverrides(base: GeometryGraph, ops: readonly OverrideOp[]): AppliedOverrides {
   let lines: DrawingLine[] = base.lines.map((l) => ({ ...l, geometry: clonePath(l.geometry) }));
+  let features: FeatureInstance[] = base.features.map((f) => ({ ...f, offset: { ...f.offset }, size: { ...f.size } }));
   const hingeAngleOverrides = new Map<string, number>();
   const staleOps: OverrideOp[] = [];
 
@@ -187,8 +200,26 @@ export function applyOverrides(base: GeometryGraph, ops: readonly OverrideOp[]):
         hingeAngleOverrides.set(`${op.faceA}|${op.faceB}`, op.angleRad);
         hingeAngleOverrides.set(`${op.faceB}|${op.faceA}`, op.angleRad);
         break;
+
+      case 'add_feature':
+        features.push({ ...op.feature, offset: { ...op.feature.offset }, size: { ...op.feature.size } });
+        break;
+
+      case 'delete_feature': {
+        const before = features.length;
+        features = features.filter((f) => f.id !== op.featureId);
+        if (features.length === before) staleOps.push(op);
+        break;
+      }
+
+      case 'set_feature': {
+        const feature = features.find((f) => f.id === op.featureId);
+        if (feature) Object.assign(feature, op.patch);
+        else staleOps.push(op);
+        break;
+      }
     }
   }
 
-  return { graph: { ...base, lines }, hingeAngleOverrides, staleOps };
+  return { graph: { ...base, lines, features }, hingeAngleOverrides, staleOps };
 }
