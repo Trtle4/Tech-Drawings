@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { emptyGraph, type DrawingLine, type FeatureInstance, type GeometryGraph } from '../types.js';
 import { resolveGeometry } from '../resolve.js';
-import { compileAllFeatureLines, compileFeatureLines, isKnownFeatureKind } from '../features.js';
+import { compileAllFeatureLines, compileFeatureLines, isKnownFeatureKind, isPegHoleKind, isTopEndSealRole } from '../features.js';
 
 /** A 100x100 square, edges named n/e/s/w, plus one crease so it has a base face and resolves cleanly. */
 function squareGraph(): GeometryGraph {
@@ -37,6 +37,28 @@ describe('isKnownFeatureKind', () => {
     expect(isKnownFeatureKind('peg_hole.round')).toBe(true);
     expect(isKnownFeatureKind('tear_notch.laser_score')).toBe(true);
     expect(isKnownFeatureKind('peg_hole.hexagon')).toBe(false);
+  });
+});
+
+describe('isPegHoleKind', () => {
+  it('is true only for the three peg hole silhouettes, not the notches', () => {
+    expect(isPegHoleKind('peg_hole.round')).toBe(true);
+    expect(isPegHoleKind('peg_hole.sombrero')).toBe(true);
+    expect(isPegHoleKind('peg_hole.delta')).toBe(true);
+    expect(isPegHoleKind('tear_notch.v')).toBe(false);
+    expect(isPegHoleKind('tear_notch.u')).toBe(false);
+    expect(isPegHoleKind('tear_notch.laser_score')).toBe(false);
+  });
+});
+
+describe('isTopEndSealRole', () => {
+  it('matches every current bag style\'s top-end-seal band naming and nothing else', () => {
+    expect(isTopEndSealRole('front_end_top')).toBe(true);
+    expect(isTopEndSealRole('back_left_end_top')).toBe(true);
+    expect(isTopEndSealRole('gusset_left_back_end_top')).toBe(true);
+    expect(isTopEndSealRole('front_end_bottom')).toBe(false);
+    expect(isTopEndSealRole('front_panel')).toBe(false);
+    expect(isTopEndSealRole('glue_flap')).toBe(false);
   });
 });
 

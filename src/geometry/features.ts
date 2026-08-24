@@ -56,6 +56,22 @@ export function isKnownFeatureKind(kind: string): kind is FeatureKind {
   return (FEATURE_KINDS as readonly string[]).includes(kind);
 }
 
+/** A peg hole is a retail hang-hole: physically meaningful only on a bag, punched through the flat band it hangs from. */
+export function isPegHoleKind(kind: FeatureKind): boolean {
+  return kind === 'peg_hole.round' || kind === 'peg_hole.sombrero' || kind === 'peg_hole.delta';
+}
+
+/**
+ * True for a face role that is a bag's top end seal band — every bag style
+ * that has one names its bands `<panel>_end_top` (see the bag-* catalog
+ * entries). No case, carton, or tray style has a face role of this shape, so
+ * gating peg holes on this suffix alone is exactly "bags only, and only the
+ * top end seal" without hardcoding style families or a style-by-style list.
+ */
+export function isTopEndSealRole(role: string): boolean {
+  return role.endsWith('_end_top');
+}
+
 /** Human label for the "add feature" list. */
 export const FEATURE_LABEL: Record<FeatureKind, string> = {
   'peg_hole.round': 'Peg hole — round',

@@ -11,7 +11,7 @@
  * not happen once a style is loaded, but matches the same defensive style
  * flapPanel.ts uses).
  */
-import { FEATURE_KINDS, FEATURE_LABEL, type FeatureKind } from '../geometry/features.js';
+import { FEATURE_KINDS, FEATURE_LABEL, isPegHoleKind, isTopEndSealRole, type FeatureKind } from '../geometry/features.js';
 import type { Store } from './state.js';
 
 const rad2deg = (r: number) => (r * 180) / Math.PI;
@@ -50,7 +50,19 @@ export function mountFeaturePanel(container: HTMLElement, store: Store): Feature
       container.innerHTML = '';
       return;
     }
-    if (!faces.some((f) => f.role === draftAnchor)) draftAnchor = faces[0]!.role;
+    // Peg holes are a retail hang-hole: only meaningful on a bag, and only on
+    // the flat top end seal band it hangs from — see isTopEndSealRole. A
+    // style with no such band (every case/carton/tray, plus the stand-up
+    // pouch, which has no modeled top seal) simply never offers peg holes.
+    const topEndSealFaces = faces.filter((f) => isTopEndSealRole(f.role));
+    const availableKinds = FEATURE_KINDS.filter((k) => !isPegHoleKind(k) || topEndSealFaces.length > 0);
+    if (!availableKinds.includes(draftKind)) {
+      draftKind = availableKinds[0]!;
+      draftSizeX = DEFAULT_SIZE[draftKind].x;
+      draftSizeY = DEFAULT_SIZE[draftKind].y;
+    }
+    const anchorCandidates = isPegHoleKind(draftKind) ? topEndSealFaces : faces;
+    if (!anchorCandidates.some((f) => f.role === draftAnchor)) draftAnchor = anchorCandidates[0]!.role;
     const lines = derived.graph.lines.filter((l) => l.type === 'cut' || l.type === 'crease' || l.type === 'perf' || l.type === 'score');
     if (!lines.some((l) => l.role === draftEdge)) draftEdge = lines[0]?.role ?? '';
 
@@ -58,9 +70,9 @@ export function mountFeaturePanel(container: HTMLElement, store: Store): Feature
     const staleFeatures = derived.staleFeatures;
     const edgeLocked = draftKind === 'tear_notch.v' || draftKind === 'tear_notch.u';
 
-    const faceOptions = faces.map((f) => `<option value="${esc(f.role)}"${f.role === draftAnchor ? ' selected' : ''}>${esc(f.role)}</option>`).join('');
+    const faceOptions = anchorCandidates.map((f) => `<option value="${esc(f.role)}"${f.role === draftAnchor ? ' selected' : ''}>${esc(f.role)}</option>`).join('');
     const edgeOptions = lines.map((l) => `<option value="${esc(l.role)}"${l.role === draftEdge ? ' selected' : ''}>${esc(l.role)}</option>`).join('');
-    const kindOptions = FEATURE_KINDS.map((k) => `<option value="${k}"${k === draftKind ? ' selected' : ''}>${esc(FEATURE_LABEL[k])}</option>`).join('');
+    const kindOptions = availableKinds.map((k) => `<option value="${k}"${k === draftKind ? ' selected' : ''}>${esc(FEATURE_LABEL[k])}</option>`).join('');
 
     const listRows = features
       .map((f) => {
@@ -95,10 +107,12 @@ export function mountFeaturePanel(container: HTMLElement, store: Store): Feature
         <div class="field" style="margin-top:10px">
           <span class="label">Kind</span>
           <select id="feature-kind">${kindOptions}</select>
+          ${topEndSealFaces.length === 0 ? '<div class="hint">Peg holes are only available on a bag\'s top end seal — this style has none.</div>' : ''}
         </div>
         <div class="field">
           <span class="label">Anchor face</span>
           <select id="feature-anchor">${faceOptions}</select>
+          ${isPegHoleKind(draftKind) ? '<div class="hint">Peg holes only anchor to the top end seal.</div>' : ''}
         </div>
         <div class="field">
           <span class="label">Reference edge</span>
